@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Piggies' Fairyland Picnic Adventure</title>
+<style>
+  /* ============================================================
+     PIGGIES' FAIRYLAND PICNIC ADVENTURE  (v3)
+     New in v3:
+       • Much longer path (almost double!)
+       • Barely any words — everything is shown with animation
+       • Animated win reward: family group hug with kisses,
+         a close-up of Piggies getting her nails painted,
+         and a fireworks finale!
+     ============================================================ */
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #ffd9ec;
+    font-family: "Comic Sans MS", "Chalkboard SE", "Marker Felt", cursive, sans-serif;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  #gameCanvas { display: block; width: 100vw; height: 100vh; }
+
+  /* ---------- Overlay screens: big pictures, tiny words ---------- */
+  .screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    background: linear-gradient(180deg, #ffe3f3 0%, #e6d9ff 55%, #d3ecff 100%);
+    z-index: 10;
+  }
+
+  /* Transparent version so fireworks keep sparkling behind the button */
+  .screen.seeThrough { background: transparent; pointer-events: none; }
+  .screen.seeThrough .bigButton { pointer-events: auto; }
+
+  .screen h1 {
+    font-size: clamp(30px, 8vw, 60px);
+    color: #b6488f;
+    text-shadow: 0 3px 0 #ffffff, 0 6px 12px rgba(182, 72, 143, 0.25);
+    margin-bottom: 18px;
+  }
+
+  .bigButton {
+    font-family: inherit;
+    font-size: clamp(24px, 6vw, 38px);
+    padding: 20px 50px;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    color: #ffffff;
+    background: linear-gradient(180deg, #ff8fc8, #f062a8);
+    box-shadow: 0 6px 0 #c94b8a, 0 12px 24px rgba(201, 75, 138, 0.35);
+    transition: transform 0.1s ease;
+  }
+  .bigButton:active { transform: translateY(4px); box-shadow: 0 2px 0 #c94b8a; }
+
+  .emojiRow { font-size: clamp(40px, 11vw, 76px); margin-bottom: 14px; letter-spacing: 8px; }
+  .hintRow  { font-size: clamp(26px, 7vw, 44px); margin-bottom: 26px; opacity: 0.85; }
+
+  .hidden { display: none !important; }
+
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+  .floaty { animation: floaty 2.4s ease-in-out infinite; display: inline-block; }
+  @keyframes popIn { 0% { transform: scale(0); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
+  .popIn { animation: popIn 0.5s ease-out; }
+  @media (prefers-reduced-motion: reduce) { .floaty, .popIn { animation: none; } }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- ============ START SCREEN: picture-first, almost no words ============ -->
+<div id="startScreen" class="screen">
+  <div class="emojiRow"><span class="floaty">🐷</span><span class="floaty" style="animation-delay:.3s">👑</span><span class="floaty" style="animation-delay:.6s">🧺</span></div>
+  <div class="hintRow">⬅️ ➡️</div>
+  <button id="startButton" class="bigButton">▶ Play! ✨</button>
+</div>
+
+<!-- ============ CAUGHT SCREEN ============ -->
+<div id="caughtScreen" class="screen hidden">
+  <div class="emojiRow popIn"><span class="floaty">🐺</span><span class="floaty" style="animation-delay:.3s">😋</span></div>
+  <h1>Oh no!</h1>
+  <button id="retryButton" class="bigButton">↻ Try Again 🐷</button>
+</div>
+
+<!-- ============ WIN SCREEN: just a button, fireworks behind ============ -->
+<div id="winScreen" class="screen seeThrough hidden">
+  <button id="playAgainButton" class="bigButton" style="margin-top:55vh">↻ Play Again 🎀</button>
+</div>
+
+<script>
+/* ==================================================================
+   PIGGIES' FAIRYLAND PICNIC ADVENTURE — game logic (v3)
+   Everything is drawn with canvas shapes, so no image files needed.
+   ================================================================== */
+
+// ---------- Canvas setup ----------
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let W = 0, H = 0;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------- World constants ----------
+const WORLD_LENGTH = 9200;          // v3: a much longer walk to the picnic!
+const GROUND_RATIO = 0.78;
+const PIG_SPEED    = 4.2;
+
+// Difficulty
+const WOLF_REACH_X   = 58;
+const WOLF_DANGER_Y  = 62;
+
+// ---------- Game state ----------
+let state = 'start';                // 'start' | 'playing' | 'caught' | 'win'
+let pig, wolves, princesses, pickups, sparkles, puffs, camera, time;
+let winTimer = 0;                   // drives the win cutscene
+let emojiParticles = [];            // 💕 💋 ✨ floating during hugs (screen coords)
+let fireworks = [];                 // firework spark particles (screen coords)
+let winOverlayShown = false;
+
+const input = { left: false, right: false };
+
+// ---------- Sound placeholders (tiny WebAudio boops, fail silently) ----------
+let audioCtx = null;
+function playSound(name) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    const t = audioCtx.currentTime;
+    const sounds = {
+      start:    [523, 784, 0.25],
+      pickup:   [659, 1047, 0.2],
+      jump:     [392, 659, 0.18],
+      slice:    [880, 1318, 0.15],
+      gobble:   [330, 196, 0.35],
+      win:      [523, 1047, 0.5],
+      kiss:     [784, 988, 0.12],
+      polish:   [988, 1175, 0.1],
+      firework: [196, 1568, 0.4],
+    };
+    const [f1, f2, dur] = sounds[name] || [440, 440, 0.1];
+    o.frequency.setValueAtTime(f1, t);
+    o.frequency.linearRampToValueAtTime(f2, t + dur);
+    g.gain.setValueAtTime(0.1, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.start(t); o.stop(t + dur);
+  } catch (e) { /* no audio? no problem! */ }
+}
+
+// ---------- Level setup ----------
+function resetGame() {
+  time = 0;
+  camera = 0;
+  winTimer = 0;
+  emojiParticles = [];
+  fireworks = [];
+  winOverlayShown = false;
+
+  pig = {
+    x: 120, y: 0, vy: 0,
+    facing: 1, walking: false,
+    power: 0, eaten: false,
+  };
+
+  // v3: eleven wolves spread along the longer path
+  wolves = [
+    { x: 950,  phase: 0.0, speed: 1.35, alive: true, fed: 0 },
+    { x: 1650, phase: 2.1, speed: 1.20, alive: true, fed: 0 },
+    { x: 2350, phase: 1.0, speed: 1.55, alive: true, fed: 0 },
+    { x: 3050, phase: 3.5, speed: 1.30, alive: true, fed: 0 },
+    { x: 3750, phase: 0.7, speed: 1.45, alive: true, fed: 0 },
+    { x: 4450, phase: 2.6, speed: 1.25, alive: true, fed: 0 },
+    { x: 5150, phase: 1.8, speed: 1.60, alive: true, fed: 0 },
+    { x: 5900, phase: 0.4, speed: 1.40, alive: true, fed: 0 },
+    { x: 6650, phase: 2.9, speed: 1.50, alive: true, fed: 0 },
+    { x: 7400, phase: 1.3, speed: 1.30, alive: true, fed: 0 },
+    { x: 8150, phase: 3.1, speed: 1.65, alive: true, fed: 0 },
+  ];
+
+  // Princess friends walking ahead. The purple one is too brave!
+  princesses = [
+    { x: 380, speed: 2.6, dress: '#9bd8ff', hair: '#6e4a2f', caution: 95, alive: true, arrived: false },
+    { x: 620, speed: 2.3, dress: '#ffd166', hair: '#3a2e3f', caution: 90, alive: true, arrived: false },
+    { x: 860, speed: 2.9, dress: '#c5a3ff', hair: '#e8b04a', caution: 38, alive: true, arrived: false },
+  ];
+
+  pickups = [
+    { type: 'icecream', x: 1300, taken: false },
+    { type: 'icecream', x: 2700, taken: false },
+    { type: 'icecream', x: 4100, taken: false },
+    { type: 'wand',     x: 4800, taken: false },   // the one and only sparkle wand!
+    { type: 'icecream', x: 6300, taken: false },
+    { type: 'icecream', x: 7800, taken: false },
+  ];
+
+  sparkles = [];
+  puffs = [];
+}
+
+// ---------- Helpers ----------
+function groundY() { return H * GROUND_RATIO; }
+const rand = (a, b) => a + Math.random() * (b - a);
+
+function addSparkles(x, y, n, color) {
+  for (let i = 0; i < n; i++) {
+    sparkles.push({
+      x: x + rand(-20, 20), y: y + rand(-20, 20),
+      vx: rand(-1, 1), vy: rand(-2.5, -0.5),
+      life: rand(0.5, 1.1), color: color || '#fff48f',
+    });
+  }
+}
+
+function addPuff(x, y) {
+  for (let i = 0; i < 8; i++) {
+    puffs.push({
+      x: x + rand(-15, 15), y: y + rand(-15, 15),
+      r: rand(14, 26), vx: rand(-1, 1), vy: rand(-1.2, -0.2),
+      life: rand(0.6, 1.0),
+    });
+  }
+}
+
+// Emoji particle in SCREEN coordinates (used by the win cutscene)
+function addEmoji(x, y, char, size) {
+  emojiParticles.push({
+    x, y, char, size: size || rand(18, 34),
+    vx: rand(-0.6, 0.6), vy: rand(-1.6, -0.6),
+    life: rand(1.2, 2.2),
+  });
+}
+
+// One firework burst at screen position (x, y)
+function addFirework(x, y) {
+  const colors = ['#ff8fc8', '#ffd166', '#9bd8ff', '#c5a3ff', '#aef0c0', '#fff48f'];
+  const color = colors[Math.floor(Math.random() * colors.length)];
+  const n = 26;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + rand(-0.1, 0.1);
+    const sp = rand(2.2, 4.6);
+    fireworks.push({
+      x, y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: rand(0.9, 1.5), color,
+    });
+  }
+  playSound('firework');
+}
+
+// ---------- Input: keyboard ----------
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') input.right = true;
+  if (e.key === 'ArrowLeft')  input.left  = true;
+});
+window.addEventListener('keyup', (e) => {
+  if (e.key === 'ArrowRight') input.right = false;
+  if (e.key === 'ArrowLeft')  input.left  = false;
+});
+
+// ---------- Input: touch ----------
+function handleTouches(e) {
+  input.left = false; input.right = false;
+  for (const t of e.touches) {
+    if (t.clientX > W / 2) input.right = true;
+    else input.left = true;
+  }
+  if (state === 'playing') e.preventDefault();
+}
+canvas.addEventListener('touchstart', handleTouches, { passive: false });
+canvas.addEventListener('touchmove',  handleTouches, { passive: false });
+canvas.addEventListener('touchend',   handleTouches, { passive: false });
+canvas.addEventListener('touchcancel', handleTouches, { passive: false });
+
+// ---------- Screen buttons ----------
+const startScreen  = document.getElementById('startScreen');
+const caughtScreen = document.getElementById('caughtScreen');
+const winScreen    = document.getElementById('winScreen');
+
+function showScreen(el) {
+  for (const s of [startScreen, caughtScreen, winScreen]) s.classList.add('hidden');
+  if (el) el.classList.remove('hidden');
+}
+
+function startPlaying() {
+  resetGame();
+  state = 'playing';
+  showScreen(null);
+  playSound('start');
+}
+document.getElementById('startButton').addEventListener('click', startPlaying);
+document.getElementById('retryButton').addEventListener('click', startPlaying);
+document.getElementById('playAgainButton').addEventListener('click', startPlaying);
+
+// ==================================================================
+//  UPDATE
+// ==================================================================
+function update(dt) {
+  time += dt;   // time always flows: lip-licking, hugs and fireworks animate
+
+  for (const w of wolves) {
+    if (w.alive) w.currentBounce = Math.abs(Math.sin(time * w.speed + w.phase)) * 130;
+  }
+
+  // Particles always float
+  for (const s of sparkles) { s.x += s.vx; s.y += s.vy; s.life -= dt; }
+  sparkles = sparkles.filter(s => s.life > 0);
+  for (const p of puffs) { p.x += p.vx; p.y += p.vy; p.life -= dt * 0.8; }
+  puffs = puffs.filter(p => p.life > 0);
+  for (const ep of emojiParticles) { ep.x += ep.vx; ep.y += ep.vy; ep.life -= dt; }
+  emojiParticles = emojiParticles.filter(ep => ep.life > 0);
+  for (const f of fireworks) {
+    f.x += f.vx; f.y += f.vy;
+    f.vy += 0.05;                 // sparks drift down
+    f.life -= dt;
+  }
+  fireworks = fireworks.filter(f => f.life > 0);
+
+  // ----- Win cutscene driver -----
+  if (state === 'win') {
+    winTimer += dt;
+
+    // Phase 1 (0–3.5s): family hug — kisses and hearts pop around them
+    if (winTimer < 3.5 && Math.random() < 0.12) {
+      addEmoji(W / 2 + rand(-130, 130), groundY() - rand(120, 220),
+               ['💕', '💋', '💖', '✨'][Math.floor(Math.random() * 4)]);
+      if (Math.random() < 0.3) playSound('kiss');
+    }
+
+    // Phase 3 (from 8s): fireworks!
+    if (winTimer > 8 && Math.random() < dt * 1.6) {
+      addFirework(rand(W * 0.15, W * 0.85), rand(H * 0.12, H * 0.45));
+    }
+
+    // Show the Play Again button once the show has played
+    if (winTimer > 9.5 && !winOverlayShown) {
+      winOverlayShown = true;
+      showScreen(winScreen);
+    }
+    return;
+  }
+
+  if (state !== 'playing') return;
+
+  // --- Walking ---
+  pig.walking = false;
+  if (input.right) { pig.x += PIG_SPEED; pig.facing = 1;  pig.walking = true; }
+  if (input.left)  { pig.x -= PIG_SPEED; pig.facing = -1; pig.walking = true; }
+  pig.x = Math.max(60, Math.min(WORLD_LENGTH + 200, pig.x));
+
+  // --- Ice-cream jump physics ---
+  if (pig.vy !== 0 || pig.y > 0) {
+    pig.y += pig.vy;
+    pig.vy -= 0.55;
+    if (pig.y <= 0) { pig.y = 0; pig.vy = 0; }
+  }
+
+  // --- Sparkle wand power ---
+  if (pig.power > 0) {
+    pig.power -= dt;
+    if (Math.random() < 0.5) addSparkles(pig.x, groundY() - 50 - pig.y, 1, '#ffd1f7');
+  }
+
+  // --- Camera ---
+  camera = Math.max(0, Math.min(pig.x - W * 0.35, WORLD_LENGTH - W + 300));
+
+  // --- Pickups ---
+  for (const p of pickups) {
+    if (p.taken) continue;
+    if (Math.abs(pig.x - p.x) < 45 && pig.y < 70) {
+      p.taken = true;
+      if (p.type === 'wand') {
+        pig.power = 3;                       // three seconds of sparkle power
+        addSparkles(p.x, groundY() - 60, 24, '#ffe680');
+        playSound('pickup');
+      } else {
+        pig.vy = 13;
+        addSparkles(p.x, groundY() - 60, 16, '#ffb3d9');
+        playSound('jump');
+      }
+    }
+  }
+
+  // --- Princess friends ---
+  for (const pr of princesses) {
+    if (!pr.alive || pr.arrived) continue;
+
+    let danger = false;
+    for (const w of wolves) {
+      if (!w.alive) continue;
+      const gap = w.x - pr.x;
+      if (gap > -30 && gap < 150 && w.currentBounce < pr.caution) { danger = true; break; }
+    }
+    if (!danger) pr.x += pr.speed;
+
+    for (const w of wolves) {
+      if (!w.alive) continue;
+      if (Math.abs(pr.x - w.x) < WOLF_REACH_X && w.currentBounce < WOLF_DANGER_Y) {
+        pr.alive = false;
+        w.fed = time;
+        addPuff(pr.x, groundY() - 60);
+        playSound('gobble');
+      }
+    }
+
+    if (pr.x >= WORLD_LENGTH - 60) pr.arrived = true;
+  }
+
+  // --- Wolves vs Piggies ---
+  for (const w of wolves) {
+    if (!w.alive) continue;
+    const closeX  = Math.abs(pig.x - w.x) < WOLF_REACH_X;
+    const wolfLow = w.currentBounce < WOLF_DANGER_Y;
+    const pigLow  = pig.y < 60;
+
+    if (closeX && wolfLow && pigLow) {
+      if (pig.power > 0) {
+        w.alive = false;
+        addPuff(w.x, groundY() - 80);
+        addSparkles(w.x, groundY() - 80, 20, '#c7f0ff');
+        playSound('slice');
+      } else {
+        state = 'caught';
+        pig.eaten = true;
+        w.fed = time;
+        addPuff(pig.x, groundY() - 50);
+        playSound('gobble');
+        setTimeout(() => showScreen(caughtScreen), 1800);
+      }
+    }
+  }
+
+  // --- Win check ---
+  if (pig.x >= WORLD_LENGTH - 80) {
+    state = 'win';
+    winTimer = 0;
+    playSound('win');
+  }
+}
+
+// ==================================================================
+//  DRAWING
+// ==================================================================
+const sx = (x) => x - camera;
+
+function drawSky() {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#cfe9ff');
+  g.addColorStop(0.45, '#eaddff');
+  g.addColorStop(1, '#ffd9ec');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  const sunX = W - 110, sunY = 95;
+  ctx.fillStyle = '#fff0a3';
+  ctx.beginPath(); ctx.arc(sunX, sunY, 46, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f5b942';
+  ctx.beginPath(); ctx.arc(sunX - 14, sunY - 6, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(sunX + 14, sunY - 6, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#f5b942'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(sunX, sunY + 8, 16, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+}
+
+function drawCloud(x, y, s) {
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.beginPath();
+  ctx.arc(x, y, 26 * s, 0, Math.PI * 2);
+  ctx.arc(x + 28 * s, y - 12 * s, 22 * s, 0, Math.PI * 2);
+  ctx.arc(x + 56 * s, y, 24 * s, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawClouds() {
+  const drift = time * 8;
+  for (let i = 0; i < 7; i++) {
+    const cx = ((i * 420 + drift - camera * 0.3) % (W + 500)) - 250;
+    drawCloud(cx, 70 + (i % 3) * 55, 0.8 + (i % 3) * 0.25);
+  }
+}
+
+function drawCastle() {
+  const baseX = 350 - camera * 0.45;
+  const gy = groundY();
+  ctx.save();
+  ctx.translate(baseX, 0);
+
+  ctx.fillStyle = '#e8d6ff';
+  ctx.fillRect(80, gy - 260, 200, 260);
+  for (const tx of [40, 280]) {
+    ctx.fillStyle = '#dcc6ff';
+    ctx.fillRect(tx, gy - 320, 60, 320);
+    ctx.fillStyle = '#ff9ecb';
+    ctx.beginPath();
+    ctx.moveTo(tx - 12, gy - 320); ctx.lineTo(tx + 30, gy - 400); ctx.lineTo(tx + 72, gy - 320);
+    ctx.fill();
+    ctx.strokeStyle = '#a880d8'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(tx + 30, gy - 400); ctx.lineTo(tx + 30, gy - 430); ctx.stroke();
+    ctx.fillStyle = '#ffd166';
+    ctx.beginPath(); ctx.moveTo(tx + 30, gy - 430); ctx.lineTo(tx + 60, gy - 422); ctx.lineTo(tx + 30, gy - 414); ctx.fill();
+  }
+  ctx.fillStyle = '#b685e8';
+  ctx.beginPath(); ctx.arc(180, gy - 40, 34, Math.PI, 0); ctx.fill();
+  ctx.fillRect(146, gy - 40, 68, 40);
+  ctx.fillStyle = '#fff3b0';
+  for (const wx of [120, 230]) { ctx.beginPath(); ctx.arc(wx, gy - 180, 13, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+
+function drawGround() {
+  const gy = groundY();
+  ctx.fillStyle = '#c5ecc0';
+  ctx.fillRect(0, gy, W, H - gy);
+  ctx.fillStyle = '#ffe9c9';
+  ctx.fillRect(0, gy + 18, W, 46);
+  ctx.fillStyle = '#ffd9a8';
+  for (let i = 0; i < W / 70 + 2; i++) {
+    const px = (i * 70 - (camera % 70));
+    ctx.beginPath(); ctx.ellipse(px, gy + 41, 22, 10, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawFlower(x, y, color) {
+  ctx.strokeStyle = '#79c267'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 22); ctx.stroke();
+  ctx.fillStyle = color;
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    ctx.beginPath(); ctx.arc(x + Math.cos(a) * 8, y - 22 + Math.sin(a) * 8, 6, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = '#fff3b0';
+  ctx.beginPath(); ctx.arc(x, y - 22, 5, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawFlowers() {
+  const colors = ['#ff9ecb', '#c5a3ff', '#ffd166', '#9bd8ff'];
+  for (let i = 0; i < 64; i++) {
+    const wx = 150 + i * 145;
+    const x = sx(wx);
+    if (x < -30 || x > W + 30) continue;
+    drawFlower(x, groundY() + 14, colors[i % colors.length]);
+  }
+}
+
+function drawIceCreamTruck(wx) {
+  const x = sx(wx), gy = groundY();
+  if (x < -300 || x > W + 300) return;
+  ctx.save(); ctx.translate(x, gy);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(-90, -110, 180, 100);
+  ctx.fillStyle = '#ffb3d9';
+  ctx.fillRect(-90, -110, 180, 26);
+  ctx.fillStyle = '#9bd8ff';
+  ctx.fillRect(-66, -78, 56, 40);
+  ctx.fillStyle = '#5a5a6e';
+  ctx.beginPath(); ctx.arc(-50, -4, 16, 0, Math.PI * 2); ctx.arc(50, -4, 16, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f2c178';
+  ctx.beginPath(); ctx.moveTo(20, -110); ctx.lineTo(40, -110); ctx.lineTo(30, -78); ctx.fill();
+  ctx.fillStyle = '#ff9ecb';
+  ctx.beginPath(); ctx.arc(30, -116, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.font = '16px sans-serif'; ctx.fillText('🍦', 8, -86);
+  ctx.restore();
+}
+
+// ---------- Generic mini pig (family members) ----------
+// lean: small rotation in radians (used for hugging poses)
+function drawMiniPig(x, y, scale, dress, waving, lean) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (lean) ctx.rotate(lean);
+  ctx.scale(scale, scale);
+
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-10, -26); ctx.lineTo(-10, -2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, -26);  ctx.lineTo(10, -2);  ctx.stroke();
+
+  if (dress) {
+    ctx.fillStyle = dress;
+    ctx.beginPath();
+    ctx.moveTo(-7, -60); ctx.lineTo(7, -60);
+    ctx.lineTo(26, -22); ctx.lineTo(-26, -22);
+    ctx.closePath(); ctx.fill();
+  } else {
+    ctx.fillStyle = '#fbbcd0';
+    ctx.beginPath(); ctx.ellipse(0, -42, 24, 26, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 7;
+  const wave = waving ? Math.sin(time * 6) * 10 : 0;
+  ctx.beginPath(); ctx.moveTo(-12, -50); ctx.lineTo(-26, -40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(12, -50);  ctx.lineTo(26, -64 - wave); ctx.stroke();
+
+  ctx.fillStyle = '#fbbcd0';
+  ctx.beginPath(); ctx.arc(0, -80, 22, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-12, -100, 6, 10, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(7, -101, 6, 10, 0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f7a8bf';
+  ctx.beginPath(); ctx.ellipse(14, -77, 11, 8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#d97a9c';
+  ctx.beginPath(); ctx.arc(11, -77, 2.2, 0, Math.PI * 2); ctx.arc(18, -77, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3a2e3f';
+  ctx.beginPath(); ctx.arc(1, -85, 3, 0, Math.PI * 2); ctx.arc(10, -85, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#d97a9c'; ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.arc(6, -73, 6, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.arc(-28, -44, 6, 0, Math.PI * 1.5); ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawPicnicAndSalon() {
+  const x = sx(WORLD_LENGTH), gy = groundY();
+  if (x < -500 || x > W + 500) return;
+  ctx.save(); ctx.translate(x, gy);
+
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) {
+    ctx.fillStyle = (r + c) % 2 ? '#ffb3d9' : '#ffffff';
+    ctx.fillRect(-120 + c * 40, 6 + r * 12, 40, 12);
+  }
+  ctx.fillStyle = '#c98c4b'; ctx.fillRect(-40, -34, 60, 36);
+  ctx.strokeStyle = '#a96f33'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(-10, -34, 26, Math.PI, 0); ctx.stroke();
+  ctx.font = '26px sans-serif';
+  ctx.fillText('🧁', 36, -6); ctx.fillText('🍓', 70, 2);
+
+  ctx.fillStyle = '#e3c6ff'; ctx.fillRect(160, -90, 130, 90);
+  ctx.fillStyle = '#ff9ecb'; ctx.fillRect(152, -106, 146, 20);
+  ctx.fillStyle = '#8a4fb5';
+  ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('💅 NAILS', 225, -91);
+  ctx.textAlign = 'left';
+  ctx.font = '24px sans-serif';
+  ctx.fillText('💖', 180, -36); ctx.fillText('✨', 240, -50);
+
+  ctx.restore();
+
+  // Family waving from the picnic during play
+  drawMiniPig(x - 200, gy - 8, 1.05, '#ff9ecb', true, 0);   // Mama
+  drawMiniPig(x - 250, gy - 8, 1.15, null,      true, 0);   // Papa
+  drawMiniPig(x - 155, gy - 4, 0.65, '#9bd8ff', true, 0);   // Baby
+
+  ctx.font = '20px sans-serif';
+  ctx.globalAlpha = 0.6 + Math.sin(time * 3) * 0.3;
+  ctx.fillText('💕', x - 235, gy - 150 + Math.sin(time * 2) * 6);
+  ctx.fillText('💗', x - 175, gy - 165 + Math.sin(time * 2 + 1) * 6);
+  ctx.globalAlpha = 1;
+
+  let spot = 0;
+  for (const pr of princesses) {
+    if (pr.arrived && pr.alive) {
+      drawPrincessAt(x - 320 - spot * 55, gy - 10, pr, false);
+      spot++;
+    }
+  }
+}
+
+// ---------- Piggies ----------
+function drawPig() {
+  if (pig.eaten) return;
+
+  const gy = groundY();
+  const x = sx(pig.x);
+  const y = gy - 12 - pig.y;
+  const step = pig.walking ? Math.sin(time * 14) * 5 : 0;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(pig.facing, 1);
+
+  if (pig.power > 0) {
+    ctx.fillStyle = 'rgba(255, 240, 150, 0.35)';
+    ctx.beginPath(); ctx.arc(0, -55, 70, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 9; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-12, -28); ctx.lineTo(-12 + step, -2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(12, -28);  ctx.lineTo(12 - step, -2);  ctx.stroke();
+
+  ctx.fillStyle = '#ffd97a';
+  ctx.beginPath();
+  ctx.moveTo(-8, -68); ctx.lineTo(8, -68);
+  ctx.lineTo(30, -24); ctx.lineTo(-30, -24);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ffce5c';
+  for (const bx of [-22, -7.5, 7.5, 22]) {
+    ctx.beginPath(); ctx.arc(bx, -24, 7.5, 0, Math.PI); ctx.fill();
+  }
+
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 8;
+  const wave = pig.walking ? Math.sin(time * 14) * 6 : 0;
+  ctx.beginPath(); ctx.moveTo(-14, -56); ctx.lineTo(-30, -44 + wave); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(14, -56);  ctx.lineTo(30, -44 - wave);  ctx.stroke();
+
+  if (pig.power > 0) {
+    ctx.strokeStyle = '#c9b6ff'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(30, -44 - wave); ctx.lineTo(48, -86); ctx.stroke();
+    const grad = ctx.createLinearGradient(48, -86, 60, -118);
+    grad.addColorStop(0, '#fff8c4'); grad.addColorStop(1, '#ffe05c');
+    ctx.strokeStyle = grad; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(48, -86); ctx.lineTo(60, -118); ctx.stroke();
+    ctx.fillStyle = '#fffce0';
+    ctx.font = '18px sans-serif'; ctx.fillText('✨', 52, -118);
+  }
+
+  ctx.fillStyle = '#fbbcd0';
+  ctx.beginPath(); ctx.arc(0, -92, 26, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-14, -116, 7, 12, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(8, -118, 7, 12, 0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f7a8bf';
+  ctx.beginPath(); ctx.ellipse(18, -88, 13, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#d97a9c';
+  ctx.beginPath(); ctx.arc(14, -88, 2.6, 0, Math.PI * 2); ctx.arc(22, -88, 2.6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3a2e3f';
+  ctx.beginPath(); ctx.arc(2, -98, 3.4, 0, Math.PI * 2); ctx.arc(13, -98, 3.4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,130,170,0.5)';
+  ctx.beginPath(); ctx.arc(-8, -86, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#d97a9c'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(8, -84, 7, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(-32, -50, 7, 0, Math.PI * 1.5); ctx.stroke();
+
+  ctx.restore();
+}
+
+// ---------- Princess NPC ----------
+function drawPrincessAt(x, y, pr, walking) {
+  const step = walking ? Math.sin(time * 12 + pr.x) * 4 : 0;
+  ctx.save();
+  ctx.translate(x, y);
+
+  ctx.strokeStyle = '#f3c9a8'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-8, -26); ctx.lineTo(-8 + step, -2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, -26);  ctx.lineTo(8 - step, -2);  ctx.stroke();
+
+  ctx.fillStyle = pr.dress;
+  ctx.beginPath();
+  ctx.moveTo(-6, -62); ctx.lineTo(6, -62);
+  ctx.lineTo(26, -22); ctx.lineTo(-26, -22);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillRect(-15, -38, 30, 4);
+
+  ctx.strokeStyle = '#f3c9a8'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(-10, -52); ctx.lineTo(-22, -40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, -52);  ctx.lineTo(22, -40);  ctx.stroke();
+
+  ctx.fillStyle = '#f8d8b8';
+  ctx.beginPath(); ctx.arc(0, -78, 17, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = pr.hair;
+  ctx.beginPath(); ctx.arc(0, -84, 17, Math.PI * 0.95, Math.PI * 2.05); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-15, -68, 5, 14, 0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(15, -68, 5, 14, -0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffd166';
+  ctx.beginPath();
+  ctx.moveTo(-9, -96); ctx.lineTo(-9, -106); ctx.lineTo(-4, -99);
+  ctx.lineTo(0, -108); ctx.lineTo(4, -99); ctx.lineTo(9, -106); ctx.lineTo(9, -96);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#3a2e3f';
+  ctx.beginPath(); ctx.arc(-5, -79, 2.4, 0, Math.PI * 2); ctx.arc(5, -79, 2.4, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#c96a8a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, -72, 5, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawPrincesses() {
+  const gy = groundY();
+  for (const pr of princesses) {
+    if (!pr.alive || pr.arrived) continue;
+    const x = sx(pr.x);
+    if (x < -80 || x > W + 80) continue;
+    drawPrincessAt(x, gy - 10, pr, true);
+  }
+}
+
+// ---------- Wolf (mean but goofy) ----------
+function drawWolf(w) {
+  const x = sx(w.x);
+  if (x < -180 || x > W + 180) return;
+  const gy = groundY();
+  const bounce = w.currentBounce || 0;
+  const y = gy - 12 - bounce;
+  const squish = 1 - Math.min(bounce / 400, 0.15);
+
+  const justAte = w.fed > 0;
+  const licking = justAte && (time - w.fed < 3.0);
+  const bellyBonus = justAte ? 18 : 0;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1, squish);
+
+  ctx.fillStyle = '#9b8bb5';
+  ctx.beginPath(); ctx.ellipse(0, -55, 42 + bellyBonus, 48 + bellyBonus * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#cfc3e3';
+  ctx.beginPath(); ctx.ellipse(0, -45, 26 + bellyBonus, 30 + bellyBonus * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+  if (justAte) {
+    ctx.strokeStyle = '#9b8bb5'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, -40, 5, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+  }
+
+  ctx.strokeStyle = '#9b8bb5'; ctx.lineWidth = 11; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-18, -16); ctx.lineTo(-18, -2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(18, -16);  ctx.lineTo(18, -2);  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  for (const lx of [-18, 18]) {
+    ctx.beginPath();
+    ctx.moveTo(lx - 6, -2); ctx.lineTo(lx - 3, 3); ctx.lineTo(lx, -2);
+    ctx.lineTo(lx + 3, 3); ctx.lineTo(lx + 6, -2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = '#9b8bb5';
+  ctx.beginPath(); ctx.arc(0, -118, 30, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-30, -132); ctx.lineTo(-26, -166); ctx.lineTo(-10, -142); ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(30, -132); ctx.lineTo(26, -166); ctx.lineTo(10, -142); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#d8b8cc';
+  ctx.beginPath();
+  ctx.moveTo(-26, -138); ctx.lineTo(-24, -156); ctx.lineTo(-15, -142); ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(26, -138); ctx.lineTo(24, -156); ctx.lineTo(15, -142); ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = '#b3a4c9';
+  ctx.beginPath(); ctx.ellipse(-26, -110, 20, 12, 0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#4a3a56';
+  ctx.beginPath(); ctx.arc(-42, -112, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(-44, -114, 2.4, 0, Math.PI * 2); ctx.fill();
+
+  const lookL = Math.sin(time * 2 + w.phase) * 2;
+  ctx.fillStyle = '#fff7d6';
+  ctx.beginPath(); ctx.ellipse(-10, -128, 9, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(10, -128, 9, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2e2436';
+  ctx.beginPath(); ctx.arc(-7 + lookL, -127, 3.4, 0, Math.PI * 2); ctx.arc(7 - lookL, -127, 3.4, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#4a3a56'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-19, -142); ctx.lineTo(-3, -136); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(19, -142);  ctx.lineTo(3, -136);  ctx.stroke();
+
+  ctx.fillStyle = '#5e4a70';
+  ctx.beginPath(); ctx.ellipse(-8, -102, 14, 9, 0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  for (const fx of [-17, -8, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(fx, -109); ctx.lineTo(fx + 4, -100); ctx.lineTo(fx + 8, -109);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = '#ff8fb0';
+  if (licking) {
+    const lick = Math.sin(time * 7) * 14;
+    ctx.beginPath();
+    ctx.ellipse(-22 + lick, -100, 10, 6, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.ellipse(-6, -95, 6, 5, 0.1, 0, Math.PI * 2); ctx.fill();
+  }
+
+  if (!justAte && bounce > 90) {
+    ctx.fillStyle = 'rgba(160, 210, 255, 0.8)';
+    ctx.beginPath(); ctx.ellipse(-30, -92 + Math.sin(time * 8) * 3, 3, 5, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.strokeStyle = '#9b8bb5'; ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(38 + bellyBonus, -60);
+  ctx.quadraticCurveTo(58 + bellyBonus, -70 + Math.sin(time * 5 + w.phase) * 8, 52 + bellyBonus, -90);
+  ctx.stroke();
+
+  if (licking) {
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.beginPath(); ctx.roundRect(20, -190, 96, 36, 16); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(34, -154); ctx.lineTo(28, -140); ctx.lineTo(50, -154); ctx.fill();
+    ctx.fillStyle = '#8a4fb5';
+    ctx.font = 'bold 17px sans-serif';
+    ctx.fillText('nom nom!', 32, -166);
+  }
+
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(120, 90, 140, 0.18)';
+  ctx.beginPath();
+  ctx.ellipse(x, gy + 6, (44 + bellyBonus) - bounce * 0.1, 9, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ---------- Pickups ----------
+function drawPickups() {
+  const gy = groundY();
+  for (const p of pickups) {
+    if (p.taken) continue;
+    const x = sx(p.x);
+    if (x < -60 || x > W + 60) continue;
+    const bob = Math.sin(time * 3 + p.x) * 8;
+    const y = gy - 60 + bob;
+
+    if (p.type === 'wand') {
+      ctx.fillStyle = 'rgba(255, 240, 150, 0.4)';
+      ctx.beginPath(); ctx.arc(x, y, 34 + Math.sin(time * 6) * 4, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.translate(x, y); ctx.rotate(-0.6);
+      ctx.strokeStyle = '#c9b6ff'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0, 20); ctx.lineTo(0, -4); ctx.stroke();
+      const grad = ctx.createLinearGradient(0, -4, 0, -28);
+      grad.addColorStop(0, '#fff8c4'); grad.addColorStop(1, '#ffe05c');
+      ctx.strokeStyle = grad; ctx.lineWidth = 9;
+      ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(0, -28); ctx.stroke();
+      ctx.restore();
+      ctx.font = '20px sans-serif'; ctx.fillText('✨', x + 8, y - 24);
+    } else {
+      ctx.fillStyle = '#f2c178';
+      ctx.beginPath(); ctx.moveTo(x - 12, y - 4); ctx.lineTo(x + 12, y - 4); ctx.lineTo(x, y + 26); ctx.fill();
+      ctx.fillStyle = '#ff9ecb';
+      ctx.beginPath(); ctx.arc(x, y - 12, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffd1e6';
+      ctx.beginPath(); ctx.arc(x - 5, y - 16, 5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+// ---------- Particles ----------
+function drawParticles() {
+  for (const s of sparkles) {
+    ctx.globalAlpha = Math.max(s.life, 0);
+    ctx.fillStyle = s.color;
+    ctx.font = '14px sans-serif';
+    ctx.fillText('✦', sx(s.x), s.y);
+  }
+  ctx.globalAlpha = 1;
+  for (const p of puffs) {
+    ctx.globalAlpha = Math.max(p.life * 0.8, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(sx(p.x), p.y, p.r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Emoji + firework particles live in SCREEN coordinates
+function drawScreenParticles() {
+  for (const ep of emojiParticles) {
+    ctx.globalAlpha = Math.min(ep.life, 1);
+    ctx.font = ep.size + 'px sans-serif';
+    ctx.fillText(ep.char, ep.x, ep.y);
+  }
+  ctx.globalAlpha = 1;
+  for (const f of fireworks) {
+    ctx.globalAlpha = Math.min(f.life, 1);
+    ctx.fillStyle = f.color;
+    ctx.beginPath(); ctx.arc(f.x, f.y, 3.2, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- HUD ----------
+function drawHUD() {
+  if (pig.power > 0) {
+    const w = 220, h = 18, x = W / 2 - w / 2, y = 24;
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath(); ctx.roundRect(x - 4, y - 4, w + 8, h + 8, 12); ctx.fill();
+    const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+    grad.addColorStop(0, '#ffd166'); grad.addColorStop(1, '#ff8fc8');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.roundRect(x, y, w * (pig.power / 3), h, 9); ctx.fill();
+    ctx.font = '22px sans-serif';
+    ctx.fillText('✨', x - 32, y + 16);
+  }
+
+  if ('ontouchstart' in window && state === 'playing' && time < 6) {
+    ctx.globalAlpha = 0.5 + Math.sin(time * 4) * 0.3;
+    ctx.font = 'bold 44px sans-serif';
+    ctx.fillText('⬅️', 24, H - 40);
+    ctx.fillText('➡️', W - 80, H - 40);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ==================================================================
+//  WIN CUTSCENE — the reward show!
+//  Phase 1 (0–3.5s):  family group hug with kisses & hearts
+//  Phase 2 (3.5–8s):  close-up of Piggies' nails being painted
+//  Phase 3 (8s+):     fireworks finale (Play Again button fades in)
+// ==================================================================
+const NAIL_COLORS = ['#ff5fa8', '#c478ff', '#ffd166', '#5fd0ff'];
+
+function drawWinCutscene() {
+  const gy = groundY();
+
+  if (winTimer < 3.5) {
+    // ---------- PHASE 1: GROUP HUG ----------
+    drawSky(); drawClouds(); drawGround();
+    // Picnic blanket centered behind the family
+    ctx.save(); ctx.translate(W / 2, gy);
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) {
+      ctx.fillStyle = (r + c) % 2 ? '#ffb3d9' : '#ffffff';
+      ctx.fillRect(-120 + c * 40, 6 + r * 12, 40, 12);
+    }
+    ctx.restore();
+
+    // Everyone squeezes together — they bob with joy and lean inward
+    const cx = W / 2;
+    const squeeze = Math.min(winTimer / 1.2, 1);           // walk-in over 1.2s
+    const bob = Math.sin(time * 5) * 4;
+    const lean = 0.12 * squeeze;
+
+    drawMiniPig(cx - 150 + 60 * squeeze, gy - 8 + bob, 1.15, null,      false,  lean);   // Papa leans right
+    drawMiniPig(cx + 150 - 60 * squeeze, gy - 8 - bob, 1.05, '#ff9ecb', false, -lean);   // Mama leans left
+    drawMiniPig(cx - 55, gy - 4 + bob * 0.5, 0.65, '#9bd8ff', false,  lean);              // Baby
+    drawMiniPig(cx + 8,  gy - 6 - bob * 0.5, 0.9,  '#ffd97a', false, -lean * 0.5);        // Piggies in the middle!
+
+    // A big pulsing heart above the hug
+    const pulse = 1 + Math.sin(time * 6) * 0.15;
+    ctx.font = (64 * pulse) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('💗', cx, gy - 200);
+    ctx.textAlign = 'left';
+
+  } else if (winTimer < 8) {
+    // ---------- PHASE 2: NAIL SALON CLOSE-UP ----------
+    const g = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) * 0.7);
+    g.addColorStop(0, '#ffe6f4');
+    g.addColorStop(1, '#e9d4ff');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // Big salon sign emoji
+    ctx.font = '54px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('💅', W / 2, 90);
+    ctx.textAlign = 'left';
+
+    // Giant pink trotter resting on a fluffy cushion
+    const hx = W / 2, hy = H * 0.72;
+    ctx.fillStyle = '#f2d8ff';                                  // cushion
+    ctx.beginPath(); ctx.ellipse(hx, hy + 60, 230, 60, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fbbcd0';                                  // hoof/hand
+    ctx.beginPath(); ctx.ellipse(hx, hy + 30, 170, 95, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Four chubby fingers with nails, painted one at a time
+    const t2 = winTimer - 3.5;                                  // time inside phase 2
+    for (let i = 0; i < 4; i++) {
+      const fx = hx - 105 + i * 70;
+      const fy = hy - 30 - Math.sin((i / 3) * Math.PI) * 22;    // arched fingers
+      ctx.fillStyle = '#fbbcd0';
+      ctx.beginPath(); ctx.ellipse(fx, fy + 28, 26, 42, 0, 0, Math.PI * 2); ctx.fill();
+
+      const paintAt = 0.6 + i * 0.9;                            // when this nail gets painted
+      const painted = t2 > paintAt;
+      ctx.fillStyle = painted ? NAIL_COLORS[i] : '#fde9f1';
+      ctx.beginPath(); ctx.ellipse(fx, fy, 17, 21, 0, 0, Math.PI * 2); ctx.fill();
+
+      if (painted) {
+        // Shine + glitter on the fresh polish
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath(); ctx.ellipse(fx - 6, fy - 8, 4, 7, -0.4, 0, Math.PI * 2); ctx.fill();
+        if (t2 - paintAt < 0.5) {
+          addEmoji(fx + rand(-12, 12), fy - 20, '✨', 18);      // sparkle pop!
+          if (Math.random() < 0.2) playSound('polish');
+        }
+      }
+    }
+
+    // The polish brush hops to whichever nail is being painted
+    const active = Math.min(Math.floor((t2 - 0.6) / 0.9) + 1, 3);
+    const target = Math.max(active, 0);
+    const bx = hx - 105 + target * 70 + Math.sin(time * 16) * 6; // little painting wiggle
+    const by = hy - 30 - Math.sin((target / 3) * Math.PI) * 22 - 8;
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.rotate(-0.5 + Math.sin(time * 16) * 0.08);
+    ctx.fillStyle = '#ff5fa8';                                  // bristles
+    ctx.beginPath(); ctx.ellipse(0, 0, 6, 14, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#b03a78'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(0, -64); ctx.stroke();  // handle
+    ctx.restore();
+
+  } else {
+    // ---------- PHASE 3: FIREWORKS FINALE ----------
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#8a7bb8');         // soft twilight, still friendly
+    g.addColorStop(0.6, '#caa8d8');
+    g.addColorStop(1, '#ffd9ec');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // Twinkly stars
+    for (let i = 0; i < 24; i++) {
+      const sxr = (i * 137) % W, syr = (i * 73) % (H * 0.5);
+      ctx.globalAlpha = 0.4 + Math.sin(time * 3 + i) * 0.35;
+      ctx.fillStyle = '#fff8d6';
+      ctx.beginPath(); ctx.arc(sxr, syr, 2, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Ground + the happy family silhouette watching the sky
+    ctx.fillStyle = '#b89ccf';
+    ctx.fillRect(0, gy, W, H - gy);
+    const cx = W / 2;
+    const bob = Math.sin(time * 5) * 3;
+    drawMiniPig(cx - 110, gy - 6 + bob, 1.15, null,      true, 0);
+    drawMiniPig(cx - 40,  gy - 6 - bob, 1.05, '#ff9ecb', true, 0);
+    drawMiniPig(cx + 25,  gy - 4 + bob, 0.9,  '#ffd97a', true, 0);   // Piggies, sparkly nails!
+    drawMiniPig(cx + 85,  gy - 2 - bob, 0.65, '#9bd8ff', true, 0);
+
+    ctx.font = '30px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('🎉', cx, gy - 170 + Math.sin(time * 4) * 8);
+    ctx.textAlign = 'left';
+  }
+
+  drawScreenParticles();   // hearts, kisses, sparkles, firework sparks
+}
+
+// ---------- Main draw ----------
+function draw() {
+  if (state === 'win') { drawWinCutscene(); return; }
+
+  drawSky();
+  drawClouds();
+  drawCastle();
+  drawGround();
+  drawFlowers();
+  drawIceCreamTruck(1450);
+  drawIceCreamTruck(3900);
+  drawIceCreamTruck(6500);
+  drawPicnicAndSalon();
+  drawPickups();
+  drawPrincesses();
+  for (const w of wolves) if (w.alive) drawWolf(w);
+  drawPig();
+  drawParticles();
+  drawScreenParticles();
+  drawHUD();
+}
+
+// Polyfill roundRect for older browsers
+if (!ctx.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    return this;
+  };
+}
+
+// ---------- Game loop ----------
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+resetGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

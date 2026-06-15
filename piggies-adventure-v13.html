@@ -1,0 +1,2632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Piggies' Fairyland Adventure</title>
+<style>
+  /* ============================================================
+     PIGGIES' FAIRYLAND ADVENTURE  (v8)
+     L1 fairyland • L2 motorcycle • L3 staircase • L4 beach •
+     L5 CITY: wolves gobble police + city folk, a wolf on a bike,
+     then a BIG pink convertible. In the car the big bad wolf
+     swoops in by helicopter dropping bricks — keep driving to
+     escape! — then crest a dramatic hill to the church party.
+     (L4 ponds removed.)
+     Controls: ⬅️➡️ move, ⬆️ / click / button = JUMP,
+     ice cream = speed boost, wand = zap, pink car = zoom!
+     ============================================================ */
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #ffd9ec;
+    font-family: "Comic Sans MS", "Chalkboard SE", "Marker Felt", cursive, sans-serif;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  #gameCanvas { display: block; width: 100vw; height: 100vh; }
+
+  /* ---------- Overlay screens: big pictures, tiny words ---------- */
+  .screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    background: linear-gradient(180deg, #ffe3f3 0%, #e6d9ff 55%, #d3ecff 100%);
+    z-index: 10;
+  }
+  .screen.seeThrough { background: transparent; pointer-events: none; }
+  .screen.seeThrough .bigButton { pointer-events: auto; }
+
+  .screen h1 {
+    font-size: clamp(30px, 8vw, 60px);
+    color: #b6488f;
+    text-shadow: 0 3px 0 #ffffff, 0 6px 12px rgba(182, 72, 143, 0.25);
+    margin-bottom: 18px;
+  }
+
+  .bigButton {
+    font-family: inherit;
+    font-size: clamp(24px, 6vw, 38px);
+    padding: 20px 50px;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    color: #ffffff;
+    background: linear-gradient(180deg, #ff8fc8, #f062a8);
+    box-shadow: 0 6px 0 #c94b8a, 0 12px 24px rgba(201, 75, 138, 0.35);
+    transition: transform 0.1s ease;
+  }
+  .bigButton:active { transform: translateY(4px); box-shadow: 0 2px 0 #c94b8a; }
+
+  .emojiRow { font-size: clamp(40px, 11vw, 76px); margin-bottom: 14px; letter-spacing: 8px; }
+  .hintRow  { font-size: clamp(26px, 7vw, 44px); margin-bottom: 26px; opacity: 0.85; }
+
+  .hidden { display: none !important; }
+
+  /* On-screen JUMP button (touch devices) */
+  #jumpBtn {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    width: 96px; height: 96px;
+    border-radius: 50%;
+    border: none;
+    display: none;                 /* shown only while playing on touch */
+    align-items: center;
+    justify-content: center;
+    font-size: 44px;
+    color: #fff;
+    background: radial-gradient(circle at 35% 30%, #b07bff, #8a4fd6);
+    box-shadow: 0 6px 0 #6c3bb0, 0 10px 18px rgba(108,59,176,.4);
+    z-index: 9;
+  }
+  #jumpBtn:active { transform: translateX(-50%) translateY(4px); box-shadow: 0 2px 0 #6c3bb0; }
+
+  /* Music on/off button */
+  #muteBtn {
+    position: fixed;
+    top: 12px; right: 12px;
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #fff;
+    background: radial-gradient(circle at 35% 30%, #ff9ecb, #f062a8);
+    box-shadow: 0 4px 0 #c94b8a, 0 6px 12px rgba(201,75,138,.35);
+    z-index: 11;
+  }
+  #muteBtn:active { transform: translateY(3px); box-shadow: 0 1px 0 #c94b8a; }
+
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+  .floaty { animation: floaty 2.4s ease-in-out infinite; display: inline-block; }
+  @keyframes popIn { 0% { transform: scale(0); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
+  .popIn { animation: popIn 0.5s ease-out; }
+  @media (prefers-reduced-motion: reduce) { .floaty, .popIn { animation: none; } }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- Background music: drop a file named soundtrack.mp3 in the same folder/repo.
+     (Loops, starts on the first tap, controlled by the 🔊 button.) -->
+<audio id="bgm" loop preload="auto">
+  <source src="soundtrack.mp3" type="audio/mpeg">
+</audio>
+<button id="muteBtn" aria-label="Music on/off">🔊</button>
+
+<!-- Big tappable jump button for phones/tablets -->
+<button id="jumpBtn" aria-label="Jump">⬆️</button>
+
+<!-- ============ START SCREEN ============ -->
+<div id="startScreen" class="screen">
+  <div class="emojiRow"><span class="floaty">🐷</span><span class="floaty" style="animation-delay:.3s">👑</span><span class="floaty" style="animation-delay:.6s">🫖</span></div>
+  <div class="hintRow">⬅️ ➡️ &nbsp; ⬆️</div>
+  <button id="startButton" class="bigButton">▶ Play! ✨</button>
+</div>
+
+<!-- ============ CAUGHT SCREEN ============ -->
+<div id="caughtScreen" class="screen hidden">
+  <div class="emojiRow popIn"><span class="floaty">🐺</span><span class="floaty" style="animation-delay:.3s">😋</span></div>
+  <h1>Oh no!</h1>
+  <button id="retryButton" class="bigButton">↻ Try Again 🐷</button>
+</div>
+
+<!-- ============ WIN SCREEN (button label changes per level) ============ -->
+<div id="winScreen" class="screen seeThrough hidden">
+  <button id="playAgainButton" class="bigButton" style="margin-top:55vh">↻ Play Again 🎀</button>
+</div>
+
+<script>
+/* ==================================================================
+   PIGGIES' FAIRYLAND ADVENTURE — game logic (v4)
+   All art is drawn with canvas shapes, so no image files needed.
+   ================================================================== */
+
+// ---------- Canvas setup ----------
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// ---- Embedded fallstreak-hole cloud photo (blue sky keyed out) ----
+const cloudImg = new Image();
+let cloudReady = false;
+cloudImg.onload = () => { cloudReady = true; };
+cloudImg.src = 'data:image/png;base64,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';
+
+let W = 0, H = 0;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------- Movement constants ----------
+const GROUND_RATIO = 0.78;
+const PIG_SPEED    = 4.2;          // base walking speed
+const BOOST_MULT   = 1.7;          // ice-cream speed boost multiplier
+const JUMP_V       = 17;           // jump strength (higher jumps!)
+const GRAVITY      = 0.55;         // gravity for jumps (long, floaty airtime)
+const SAFE_HEIGHT  = 50;           // pig is "in the air / safe" above this
+const WATER_SAFE   = 26;           // must be at least this high to clear a tide pool
+
+const WOLF_REACH_X   = 58;
+const WOLF_DANGER_Y  = 62;
+const MOTO_REACH_X   = 50;
+
+const isTouch = ('ontouchstart' in window);
+
+// ---------- Game state ----------
+let level = 1;
+let state = 'start';               // 'start' | 'playing' | 'caught' | 'win'
+let pig, wolves, motos, knights, princesses, npcs, pickups, sparkles, puffs, camera, time;
+let pools, coins, money, baby, pigTrail;     // Level 4 (beach) extras
+let helicopter, bricks;                       // Level 5 car-chase extras
+let lastSplash = 0;
+let worldLength = 9200;
+let terrain = null;                // Level 3 staircase profile (null = flat)
+let winTimer = 0;
+let emojiParticles = [];           // hearts/kisses/sparkles in screen coords
+let fireworks = [];
+let winOverlayShown = false;
+
+const input = { left: false, right: false };
+
+// ---------- Sound placeholders (tiny WebAudio boops, fail silently) ----------
+let audioCtx = null;
+function playSound(name) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    const t = audioCtx.currentTime;
+    const sounds = {
+      start:    [523, 784, 0.25],
+      boost:    [440, 880, 0.22],   // zoom!
+      jump:     [392, 740, 0.16],   // boing-up
+      pickup:   [659, 1047, 0.2],
+      slice:    [880, 1318, 0.15],
+      gobble:   [330, 196, 0.35],
+      win:      [523, 1047, 0.5],
+      kiss:     [784, 988, 0.12],
+      polish:   [988, 1175, 0.1],
+      sparkle:  [1047, 1568, 0.18],
+      teacup:   [880, 740, 0.12],
+      firework: [196, 1568, 0.4],
+    };
+    const [f1, f2, dur] = sounds[name] || [440, 440, 0.1];
+    o.frequency.setValueAtTime(f1, t);
+    o.frequency.linearRampToValueAtTime(f2, t + dur);
+    g.gain.setValueAtTime(0.1, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.start(t); o.stop(t + dur);
+  } catch (e) { /* no audio? no problem! */ }
+}
+
+// ---------- Level setup ----------
+function resetGame() {
+  time = 0;
+  camera = 0;
+  winTimer = 0;
+  emojiParticles = [];
+  fireworks = [];
+  winOverlayShown = false;
+
+  pig = {
+    x: 120, y: 0, vy: 0,
+    facing: 1, walking: false,
+    power: 0,                       // sparkle-wand seconds
+    boost: 0,                       // speed-boost seconds
+    eaten: false,
+    driving: false,                 // Level 5: riding the pink car
+  };
+
+  sparkles = [];
+  puffs = [];
+  motos = [];
+  knights = [];
+  npcs = [];
+  terrain = null;
+  pools = [];
+  coins = [];
+  money = 0;
+  pigTrail = [];
+  baby = { x: 40, y: 0 };
+  helicopter = { x: 0, active: false, dropT: 0 };
+  bricks = [];
+
+  if (level === 1) {
+    // -------- LEVEL 1: the original journey (now with jump + boost) --------
+    worldLength = 9200;
+    wolves = [
+      { x: 950,  phase: 0.0, speed: 1.35 }, { x: 1650, phase: 2.1, speed: 1.20 },
+      { x: 2350, phase: 1.0, speed: 1.55 }, { x: 3050, phase: 3.5, speed: 1.30 },
+      { x: 3750, phase: 0.7, speed: 1.45 }, { x: 4450, phase: 2.6, speed: 1.25 },
+      { x: 5150, phase: 1.8, speed: 1.60 }, { x: 5900, phase: 0.4, speed: 1.40 },
+      { x: 6650, phase: 2.9, speed: 1.50 }, { x: 7400, phase: 1.3, speed: 1.30 },
+      { x: 8150, phase: 3.1, speed: 1.65 },
+    ];
+    princesses = [
+      { x: 380, speed: 2.6, dress: '#9bd8ff', hair: '#6e4a2f', caution: 95 },
+      { x: 620, speed: 2.3, dress: '#ffd166', hair: '#3a2e3f', caution: 90 },
+      { x: 860, speed: 2.9, dress: '#c5a3ff', hair: '#e8b04a', caution: 38 }, // too brave!
+    ];
+    pickups = [
+      { type: 'icecream', x: 1300 }, { type: 'icecream', x: 2700 },
+      { type: 'icecream', x: 4100 }, { type: 'wand', x: 4800 },   // the one wand
+      { type: 'icecream', x: 6300 }, { type: 'icecream', x: 7800 },
+    ];
+
+  } else if (level === 2) {
+    // -------- LEVEL 2: harder! more wolves, faster, + motorcycle villain --------
+    worldLength = 10800;
+    wolves = [
+      { x: 850,  phase: 0.0, speed: 1.55 }, { x: 1450, phase: 2.1, speed: 1.70 },
+      { x: 2050, phase: 1.0, speed: 1.50 }, { x: 3150, phase: 3.5, speed: 1.80 },
+      { x: 3750, phase: 0.7, speed: 1.60 }, { x: 4350, phase: 2.6, speed: 1.85 },
+      { x: 5400, phase: 1.8, speed: 1.65 }, { x: 6000, phase: 0.4, speed: 1.90 },
+      { x: 6600, phase: 2.9, speed: 1.55 }, { x: 7650, phase: 1.3, speed: 1.75 },
+      { x: 8250, phase: 3.1, speed: 1.95 }, { x: 8850, phase: 0.9, speed: 1.70 },
+      { x: 9700, phase: 2.2, speed: 1.85 },
+    ];
+    // Wolf-on-a-motorcycle: ZOOMS fast on a LONG loop — JUMP and he shoots past under you!
+    // Just two of them now (was too hard with four).
+    motos = [
+      { x: 3000, dir: 1,  min: 2100, max: 3900, speed: 6.2, alive: true, puff: 0 },
+      { x: 7350, dir: 1,  min: 6450, max: 8350, speed: 6.5, alive: true, puff: 0 },
+    ];
+    // Four princesses — the two cautious ones survive to the tea party
+    princesses = [
+      { x: 360, speed: 2.5, dress: '#9bd8ff', hair: '#6e4a2f', caution: 110 }, // careful → lives
+      { x: 600, speed: 2.6, dress: '#ffd166', hair: '#3a2e3f', caution: 105 }, // careful → lives
+      { x: 840, speed: 3.0, dress: '#c5a3ff', hair: '#e8b04a', caution: 35 },  // brave → eaten
+      { x: 1080, speed: 3.1, dress: '#aef0c0', hair: '#caa24a', caution: 42 }, // brave → eaten
+    ];
+    pickups = [
+      { type: 'icecream', x: 1150 }, { type: 'wand', x: 1900 },
+      { type: 'icecream', x: 3450 }, { type: 'wand', x: 4650 },
+      { type: 'icecream', x: 5700 }, { type: 'icecream', x: 6900 },
+      { type: 'wand', x: 8050 },     { type: 'icecream', x: 9350 },
+    ];
+  } else if (level === 3) {
+    // -------- LEVEL 3: up the staircase, through the hall, down again --------
+    worldLength = 8000;
+    terrain = { type: 'stairs', up0: 1500, up1: 2450, down0: 4550, down1: 5500, top: 250, steps: 9 };
+    wolves = [
+      { x: 700,  phase: 0.0, speed: 1.4 }, { x: 1150, phase: 2.0, speed: 1.5 },
+      { x: 2750, phase: 1.0, speed: 1.5 }, { x: 3350, phase: 3.2, speed: 1.6 },
+      { x: 3900, phase: 0.6, speed: 1.5 }, { x: 4300, phase: 2.4, speed: 1.7 },
+      { x: 5850, phase: 1.2, speed: 1.5 }, { x: 6450, phase: 0.3, speed: 1.6 },
+      { x: 7050, phase: 2.7, speed: 1.6 },
+    ];
+    // motorcycle wolves zoom on the flat hall and on the way out
+    motos = [
+      { x: 3450, dir: 1, min: 2650, max: 4350, speed: 6.2, alive: true, puff: 0 },
+      { x: 6600, dir: 1, min: 5800, max: 7500, speed: 6.5, alive: true, puff: 0 },
+    ];
+    // NEW villain: cloaked Shadow Wolf knights that pace UP & DOWN the stairs
+    knights = [
+      { x: 1500, min: 1500, max: 2450, dir: 1,  speed: 2.6, alive: true }, // up-staircase
+      { x: 5500, min: 4550, max: 5500, dir: -1, speed: 2.8, alive: true }, // down-staircase
+    ];
+    princesses = [
+      { x: 360, speed: 2.5, dress: '#9bd8ff', hair: '#6e4a2f', caution: 110 },
+      { x: 600, speed: 2.6, dress: '#ffd166', hair: '#3a2e3f', caution: 105 },
+    ];
+    pickups = [
+      { type: 'icecream', x: 900 },  { type: 'wand', x: 1350 },
+      { type: 'icecream', x: 2900 }, { type: 'wand', x: 3700 },
+      { type: 'icecream', x: 5050 }, { type: 'wand', x: 5650 },
+      { type: 'icecream', x: 6800 },
+    ];
+  } else if (level === 4) {
+    // -------- LEVEL 4: the beach money run (the jet dropped them off!) --------
+    worldLength = 8200;
+    terrain = { type: 'hill', h0: 3500, h1: 4500, top: 170 };   // the little hill
+    wolves = [
+      { x: 800,  phase: 0.0, speed: 1.4 }, { x: 1500, phase: 2.0, speed: 1.5 },
+      { x: 2200, phase: 1.0, speed: 1.5 }, { x: 2900, phase: 3.2, speed: 1.6 },
+      { x: 5200, phase: 0.6, speed: 1.5 }, { x: 5900, phase: 2.4, speed: 1.6 },
+      { x: 6600, phase: 1.2, speed: 1.5 }, { x: 7300, phase: 0.3, speed: 1.6 },
+    ];
+    motos = [
+      { x: 2600, dir: 1, min: 1800, max: 3300, speed: 6.2, alive: true, puff: 0 },
+      { x: 6200, dir: 1, min: 5400, max: 7100, speed: 6.5, alive: true, puff: 0 },
+    ];
+    // the dark Shadow Wolf soldier hangs out on the little hill
+    knights = [
+      { x: 3500, min: 3500, max: 4500, dir: 1, speed: 2.8, alive: true },
+    ];
+    princesses = [];
+    pickups = [
+      { type: 'icecream', x: 1300 }, { type: 'wand', x: 2050 },
+      { type: 'icecream', x: 3150 }, { type: 'wand', x: 5050 },
+      { type: 'icecream', x: 6300 }, { type: 'wand', x: 7150 },
+    ];
+    // (tide pools removed — they were too hard for little players)
+    pools = [];
+    // spilled money bags to collect
+    coins = [
+      { x: 400 }, { x: 640 }, { x: 880 }, { x: 1400 }, { x: 1700 },
+      { x: 2350 }, { x: 2750 }, { x: 3300 }, { x: 3900 }, { x: 4300 },
+      { x: 4980 }, { x: 5320 }, { x: 5820 }, { x: 6500 }, { x: 7350 }, { x: 7820 },
+    ];
+  } else {
+    // -------- LEVEL 5: the city — wolves gobbling everyone, then the pink car to church --------
+    worldLength = 8600;
+    terrain = { type: 'hill', h0: 6900, h1: 7900, top: 210 };  // dramatic hill near the end
+    wolves = [
+      { x: 600,  phase: 0.0, speed: 1.5 }, { x: 1150, phase: 2.0, speed: 1.6 },
+      { x: 1650, phase: 1.0, speed: 1.6 }, { x: 2150, phase: 3.2, speed: 1.7 },
+      { x: 2650, phase: 0.6, speed: 1.6 }, { x: 3150, phase: 2.4, speed: 1.7 },
+      { x: 3650, phase: 1.2, speed: 1.6 },   // all in the FIRST half (before the car)
+    ];
+    // the wolf on a bike (first half only)
+    motos = [
+      { x: 2400, dir: 1, min: 1700, max: 3200, speed: 6.2, alive: true, puff: 0 },
+    ];
+    knights = [];
+    princesses = [];
+    // police officers + city folk that the wolves chase and gobble
+    npcs = [
+      { x: 300,  speed: 2.6, type: 'police',   color: '#7fa8e0', caution: 95 },
+      { x: 520,  speed: 2.8, type: 'civilian', color: '#ffb3d9', caution: 40 }, // gets gobbled
+      { x: 760,  speed: 2.5, type: 'civilian', color: '#aef0c0', caution: 100 },
+      { x: 1300, speed: 2.9, type: 'police',   color: '#7fa8e0', caution: 38 }, // gets gobbled
+      { x: 1850, speed: 2.6, type: 'civilian', color: '#ffd166', caution: 95 },
+      { x: 2350, speed: 3.0, type: 'civilian', color: '#c5a3ff', caution: 42 }, // gets gobbled
+      { x: 2950, speed: 2.6, type: 'police',   color: '#7fa8e0', caution: 100 },
+      { x: 3550, speed: 2.8, type: 'civilian', color: '#9bd8ff', caution: 95 },
+    ];
+    pickups = [
+      { type: 'icecream', x: 900 }, { type: 'wand', x: 1450 },
+      { type: 'icecream', x: 2300 }, { type: 'wand', x: 3300 },
+      { type: 'car', x: 4200 },                       // hop in the pink convertible!
+    ];
+  }
+
+  // shared flags
+  for (const w of wolves) { w.alive = true; w.fed = 0; }
+  for (const pr of princesses) { pr.alive = true; pr.arrived = false; }
+  for (const n of npcs) { n.alive = true; n.arrived = false; }
+  for (const p of pickups) p.taken = false;
+  for (const c of coins) c.taken = false;
+}
+
+// ---------- Helpers ----------
+function groundY() { return H * GROUND_RATIO; }
+
+// Height of the floor (in px above the base ground line) at a given world x.
+// Flat (0) for levels 1-2; a staircase-up / hall / staircase-down for level 3.
+function terrainHeight(x) {
+  const t = terrain;
+  if (!t) return 0;
+  if (t.type === 'hill') {
+    if (x < t.h0 || x > t.h1) return 0;
+    const u = (x - t.h0) / (t.h1 - t.h0);
+    return t.top * 0.5 * (1 - Math.cos(u * Math.PI * 2));   // smooth bump
+  }
+  // staircase (level 3)
+  if (x < t.up0) return 0;
+  if (x < t.up1) { const w = (t.up1 - t.up0) / t.steps; const i = Math.floor((x - t.up0) / w); return t.top * (i + 1) / t.steps; }
+  if (x < t.down0) return t.top;
+  if (x < t.down1) { const w = (t.down1 - t.down0) / t.steps; const i = Math.floor((x - t.down0) / w); return t.top * (1 - (i + 1) / t.steps); }
+  return 0;
+}
+const rand = (a, b) => a + Math.random() * (b - a);
+
+function addSparkles(x, y, n, color) {
+  for (let i = 0; i < n; i++) {
+    sparkles.push({
+      x: x + rand(-20, 20), y: y + rand(-20, 20),
+      vx: rand(-1, 1), vy: rand(-2.5, -0.5),
+      life: rand(0.5, 1.1), color: color || '#fff48f',
+    });
+  }
+}
+function addPuff(x, y) {
+  for (let i = 0; i < 8; i++) {
+    puffs.push({
+      x: x + rand(-15, 15), y: y + rand(-15, 15),
+      r: rand(14, 26), vx: rand(-1, 1), vy: rand(-1.2, -0.2),
+      life: rand(0.6, 1.0),
+    });
+  }
+}
+function addEmoji(x, y, char, size) {
+  emojiParticles.push({
+    x, y, char, size: size || rand(18, 34),
+    vx: rand(-0.6, 0.6), vy: rand(-1.6, -0.6),
+    life: rand(1.2, 2.2),
+  });
+}
+function addFirework(x, y) {
+  const colors = ['#ff8fc8', '#ffd166', '#9bd8ff', '#c5a3ff', '#aef0c0', '#fff48f'];
+  const color = colors[Math.floor(Math.random() * colors.length)];
+  for (let i = 0; i < 26; i++) {
+    const a = (i / 26) * Math.PI * 2 + rand(-0.1, 0.1);
+    const sp = rand(2.2, 4.6);
+    fireworks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(0.9, 1.5), color });
+  }
+  playSound('firework');
+}
+function addConfetti() {
+  emojiParticles.push({
+    x: rand(0, W), y: -10,
+    char: ['🎉', '🎊', '💕', '✨', '🎶'][Math.floor(Math.random() * 5)],
+    size: rand(16, 28), vx: rand(-0.5, 0.5), vy: rand(0.8, 2.0), life: rand(2.5, 4),
+  });
+}
+
+// ---------- Jump action (shared by key / click / button) ----------
+function doJump() {
+  if (state !== 'playing') return;
+  if (pig.y === 0 && pig.vy === 0) {   // only when standing on the ground
+    pig.vy = JUMP_V;
+    playSound('jump');
+  }
+}
+
+// ---------- Input: keyboard ----------
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') input.right = true;
+  if (e.key === 'ArrowLeft')  input.left  = true;
+  if (e.key === 'ArrowUp' || e.key === ' ') { doJump(); e.preventDefault(); }
+});
+window.addEventListener('keyup', (e) => {
+  if (e.key === 'ArrowRight') input.right = false;
+  if (e.key === 'ArrowLeft')  input.left  = false;
+});
+
+// ---------- Input: touch (hold left/right halves to move) ----------
+function handleTouches(e) {
+  input.left = false; input.right = false;
+  for (const t of e.touches) {
+    if (t.clientX > W / 2) input.right = true;
+    else input.left = true;
+  }
+  if (state === 'playing') e.preventDefault();   // also blocks synthetic mouse events
+}
+canvas.addEventListener('touchstart', handleTouches, { passive: false });
+canvas.addEventListener('touchmove',  handleTouches, { passive: false });
+canvas.addEventListener('touchend',   handleTouches, { passive: false });
+canvas.addEventListener('touchcancel', handleTouches, { passive: false });
+
+// Desktop: click anywhere on the play area to jump
+canvas.addEventListener('mousedown', () => doJump());
+
+// On-screen jump button (touch)
+const jumpBtn = document.getElementById('jumpBtn');
+jumpBtn.addEventListener('touchstart', (e) => { e.preventDefault(); doJump(); }, { passive: false });
+jumpBtn.addEventListener('mousedown',  (e) => { e.preventDefault(); doJump(); });
+
+// ---------- Screen buttons ----------
+const startScreen  = document.getElementById('startScreen');
+const caughtScreen = document.getElementById('caughtScreen');
+const winScreen    = document.getElementById('winScreen');
+const playAgainButton = document.getElementById('playAgainButton');
+
+// ---------- Background music ----------
+const bgm = document.getElementById('bgm');
+const muteBtn = document.getElementById('muteBtn');
+let musicOn = true;
+function startMusic() {
+  if (!musicOn) return;
+  // Browsers only allow audio after a user gesture; the Play/retry tap satisfies that.
+  bgm.volume = 0.5;
+  const p = bgm.play();
+  if (p && p.catch) p.catch(() => { /* will start on the next tap */ });
+}
+muteBtn.addEventListener('click', () => {
+  musicOn = !musicOn;
+  if (musicOn) { muteBtn.textContent = '🔊'; startMusic(); }
+  else { muteBtn.textContent = '🔇'; bgm.pause(); }
+});
+
+function showScreen(el) {
+  for (const s of [startScreen, caughtScreen, winScreen]) s.classList.add('hidden');
+  if (el) el.classList.remove('hidden');
+}
+
+function startLevel(n) {
+  level = n;
+  resetGame();
+  state = 'playing';
+  showScreen(null);
+  playSound('start');
+  startMusic();
+}
+document.getElementById('startButton').addEventListener('click', () => startLevel(1));
+document.getElementById('retryButton').addEventListener('click', () => startLevel(level));   // retry same level
+playAgainButton.addEventListener('click', () => startLevel(level === 1 ? 2 : level === 2 ? 3 : level === 3 ? 4 : level === 4 ? 5 : 1));
+
+// ==================================================================
+//  UPDATE
+// ==================================================================
+function update(dt) {
+  time += dt;
+
+  for (const w of wolves) {
+    if (w.alive) w.currentBounce = Math.abs(Math.sin(time * w.speed + w.phase)) * 130;
+  }
+
+  // particle motion (always)
+  for (const s of sparkles) { s.x += s.vx; s.y += s.vy; s.life -= dt; }
+  sparkles = sparkles.filter(s => s.life > 0);
+  for (const p of puffs) { p.x += p.vx; p.y += p.vy; p.life -= dt * 0.8; }
+  puffs = puffs.filter(p => p.life > 0);
+  for (const ep of emojiParticles) { ep.x += ep.vx; ep.y += ep.vy; ep.life -= dt; }
+  emojiParticles = emojiParticles.filter(ep => ep.life > 0);
+  for (const f of fireworks) { f.x += f.vx; f.y += f.vy; f.vy += 0.05; f.life -= dt; }
+  fireworks = fireworks.filter(f => f.life > 0);
+
+  if (state === 'win') { updateWin(dt); return; }
+  if (state !== 'playing') return;
+
+  // --- Walking (faster while boosted or driving the car) ---
+  const lvlWalk = (level === 1) ? 1.4 : 1;            // Level 1 walks at a snappier normal pace
+  const eff = PIG_SPEED * lvlWalk * (pig.driving ? 1.9 : (pig.boost > 0 ? BOOST_MULT : 1));
+  pig.walking = false;
+  if (input.right) { pig.x += eff; pig.facing = 1;  pig.walking = true; }
+  if (input.left)  { pig.x -= eff; pig.facing = -1; pig.walking = true; }
+  pig.x = Math.max(60, Math.min(worldLength + 200, pig.x));
+
+  // --- Jump physics ---
+  if (pig.vy !== 0 || pig.y > 0) {
+    pig.y += pig.vy;
+    pig.vy -= GRAVITY;
+    if (pig.y <= 0) { pig.y = 0; pig.vy = 0; }
+  }
+
+  // --- Timers ---
+  if (pig.power > 0) {
+    pig.power -= dt;
+    if (Math.random() < 0.5) addSparkles(pig.x, groundY() - 50 - pig.y, 1, '#ffd1f7');
+  }
+  if (pig.boost > 0) {
+    pig.boost -= dt;
+    if (pig.walking && Math.random() < 0.6)
+      addSparkles(pig.x - pig.facing * 30, groundY() - 30 - pig.y, 1, '#9bd8ff');
+  }
+  if (pig.driving && pig.walking && Math.random() < 0.4)
+    addSparkles(pig.x - pig.facing * 42, groundY() - 26, 1, '#ff8fc8');
+
+  // --- Camera ---
+  camera = Math.max(0, Math.min(pig.x - W * 0.35, worldLength - W + 300));
+
+  // --- Pickups ---
+  for (const p of pickups) {
+    if (p.taken) continue;
+    if (Math.abs(pig.x - p.x) < 48 && pig.y < 90) {
+      p.taken = true;
+      if (p.type === 'wand') {
+        pig.power = 3;                       // 3s sparkle power
+        addSparkles(p.x, groundY() - 60, 24, '#ffe680');
+        playSound('pickup');
+      } else if (p.type === 'car') {
+        pig.driving = true;                  // hop in the pink convertible!
+        addSparkles(p.x, groundY() - 60, 30, '#ff8fc8');
+        playSound('win');
+        helicopter.active = true;            // the big bad wolf swoops in!
+        helicopter.x = pig.x - 340;
+        helicopter.dropT = 1.0;
+      } else {
+        pig.boost = 3;                       // 3s zoom!
+        addSparkles(p.x, groundY() - 60, 16, '#9bd8ff');
+        playSound('boost');
+      }
+    }
+  }
+
+  // --- Level 4: money bags, tide pools, baby sister ---
+  if (level === 4) {
+    for (const c of coins) {
+      if (c.taken) continue;
+      if (Math.abs(pig.x - c.x) < 46 && pig.y < 95) {
+        c.taken = true; money++;
+        addSparkles(c.x, groundY() - terrainHeight(c.x) - 58, 16, '#ffe680');
+        playSound('pickup');
+      }
+    }
+    for (const pool of pools) {
+      if (pig.x > pool.x0 - 8 && pig.x < pool.x1 + 8 && pig.y < WATER_SAFE) {
+        if (time - lastSplash > 0.5) {
+          addSparkles(pig.x, groundY() - 16, 12, '#9bd8ff');
+          addPuff(pig.x, groundY() - 10);
+          playSound('boost'); lastSplash = time;
+        }
+        pig.x = pool.x0 - 16; pig.vy = 0;     // hop back out — you must jump over!
+      }
+    }
+    // baby sister trails Piggies (and is immune to every villain)
+    pigTrail.push({ x: pig.x, y: pig.y });
+    if (pigTrail.length > 42) pigTrail.shift();
+    const bi = Math.max(0, pigTrail.length - 22);
+    baby.x = pigTrail[bi].x; baby.y = pigTrail[bi].y;
+  }
+
+  // --- Princess friends ---
+  for (const pr of princesses) {
+    if (!pr.alive || pr.arrived) continue;
+    let danger = false;
+    for (const w of wolves) {
+      if (!w.alive) continue;
+      const gap = w.x - pr.x;
+      if (gap > -30 && gap < 150 && w.currentBounce < pr.caution) { danger = true; break; }
+    }
+    if (!danger) pr.x += pr.speed;
+    for (const w of wolves) {
+      if (!w.alive) continue;
+      if (Math.abs(pr.x - w.x) < WOLF_REACH_X && w.currentBounce < WOLF_DANGER_Y) {
+        pr.alive = false; w.fed = time;
+        addPuff(pr.x, groundY() - 60); playSound('gobble');
+      }
+    }
+    if (pr.x >= worldLength - 60) pr.arrived = true;
+  }
+
+  // --- City NPCs (police + folk) — the wolves chase and gobble them ---
+  for (const n of npcs) {
+    if (!n.alive || n.arrived) continue;
+    let danger = false;
+    for (const w of wolves) {
+      if (!w.alive) continue;
+      const gap = w.x - n.x;
+      if (gap > -30 && gap < 150 && w.currentBounce < n.caution) { danger = true; break; }
+    }
+    if (!danger) n.x += n.speed;
+    for (const w of wolves) {
+      if (!w.alive) continue;
+      if (Math.abs(n.x - w.x) < WOLF_REACH_X && w.currentBounce < WOLF_DANGER_Y) {
+        n.alive = false; w.fed = time;
+        addPuff(n.x, groundY() - 60); playSound('gobble');
+      }
+    }
+    if (n.x >= worldLength - 300) n.arrived = true;
+  }
+
+  // --- Bouncing wolves vs Piggies (run under when they're UP) ---
+  for (const w of wolves) {
+    if (!w.alive) continue;
+    const closeX  = Math.abs(pig.x - w.x) < WOLF_REACH_X;
+    const wolfLow = w.currentBounce < WOLF_DANGER_Y;
+    const pigLow  = pig.y < SAFE_HEIGHT;
+    if (closeX && wolfLow && pigLow) {
+      if (pig.power > 0 || pig.driving) {
+        w.alive = false; addPuff(w.x, groundY() - 80);
+        addSparkles(w.x, groundY() - 80, 20, '#c7f0ff'); playSound('slice');
+      } else { gobblePig(w); }
+    }
+  }
+
+  // --- Motorcycle wolves (JUMP over them!) ---
+  for (const m of motos) {
+    if (!m.alive) continue;
+    m.x += m.dir * m.speed;
+    if (m.x > m.max) { m.x = m.max; m.dir = -1; }
+    if (m.x < m.min) { m.x = m.min; m.dir = 1; }
+    m.puff -= dt;
+    if (m.puff <= 0) { addPuff(m.x - m.dir * 36, groundY() - 18); m.puff = 0.5; }
+
+    const closeX = Math.abs(pig.x - m.x) < MOTO_REACH_X;
+    const pigLow = pig.y < SAFE_HEIGHT;        // safe if Piggies is up in a jump!
+    if (closeX && pigLow) {
+      if (pig.power > 0 || pig.driving) {
+        m.alive = false; addPuff(m.x, groundY() - 50);
+        addSparkles(m.x, groundY() - 50, 20, '#c7f0ff'); playSound('slice');
+      } else { gobblePig(null, m); }
+    }
+  }
+
+  // --- Shadow Wolf knights pacing the stairs (JUMP over them, or zap with the wand) ---
+  for (const k of knights) {
+    if (!k.alive) continue;
+    k.x += k.dir * k.speed;
+    if (k.x > k.max) { k.x = k.max; k.dir = -1; }
+    if (k.x < k.min) { k.x = k.min; k.dir = 1; }
+    const closeX = Math.abs(pig.x - k.x) < 46;
+    const pigLow = pig.y < SAFE_HEIGHT;
+    if (closeX && pigLow) {
+      if (pig.power > 0) {
+        k.alive = false;
+        addPuff(k.x, groundY() - terrainHeight(k.x) - 60);
+        addSparkles(k.x, groundY() - terrainHeight(k.x) - 60, 20, '#ffd1f7');
+        playSound('slice');
+      } else { gobblePig(); }
+    }
+  }
+
+  // --- Level 5 car chase: the big bad wolf's brick-dropping helicopter ---
+  if (level === 5 && pig.driving && helicopter.active) {
+    const heliSpeed = PIG_SPEED * 1.9 * 0.83;          // a touch slower than the car
+    helicopter.x = Math.min(helicopter.x + heliSpeed, pig.x - 30);  // chases, never gets ahead
+    helicopter.dropT -= dt;
+    if (helicopter.dropT <= 0 && helicopter.x > pig.x - W * 0.55) {
+      bricks.push({ x: helicopter.x, h: 300, vy: 0, landed: 0 });
+      helicopter.dropT = 0.7;
+    }
+  }
+  for (const br of bricks) {
+    if (br.h > 0) {
+      br.vy += 0.6; br.h -= br.vy;
+      if (br.h <= 0) { br.h = 0; br.landed = 0.5; addPuff(br.x, groundY() - terrainHeight(br.x) - 6); }
+      else if (br.h < 50 && Math.abs(pig.x - br.x) < 42 && pig.y < 40) gobblePig();  // crash!
+    } else {
+      br.landed -= dt;
+    }
+  }
+  bricks = bricks.filter(b => b.h > 0 || b.landed > 0);
+
+  // --- Win check ---
+  if (pig.x >= worldLength - 80) {
+    state = 'win'; winTimer = 0; playSound('win');
+  }
+}
+
+function gobblePig(wolf, moto) {
+  if (state !== 'playing') return;
+  state = 'caught';
+  pig.eaten = true;
+  if (wolf) wolf.fed = time;
+  if (moto) moto.fed = time;
+  addPuff(pig.x, groundY() - 50);
+  playSound('gobble');
+  setTimeout(() => showScreen(caughtScreen), 1800);
+}
+
+// ----- Win cutscene timing (differs per level) -----
+function updateWin(dt) {
+  winTimer += dt;
+
+  if (level === 1) {
+    if (winTimer < 3.5 && Math.random() < 0.12) {
+      addEmoji(W / 2 + rand(-130, 130), groundY() - rand(120, 220),
+               ['💕', '💋', '💖', '✨'][Math.floor(Math.random() * 4)]);
+      if (Math.random() < 0.3) playSound('kiss');
+    }
+    if (winTimer > 8 && Math.random() < dt * 1.6)
+      addFirework(rand(W * 0.15, W * 0.85), rand(H * 0.12, H * 0.45));
+    if (winTimer > 9.5 && !winOverlayShown) {
+      winOverlayShown = true;
+      playAgainButton.textContent = 'Level 2 ▶';
+      showScreen(winScreen);
+    }
+  } else if (level === 2) {
+    // Level 2: makeover (0-3) → tea party (3-7.5) → castle + fireworks (7.5+)
+    if (winTimer > 0.4 && winTimer < 3 && Math.random() < 0.25) {
+      addEmoji(W / 2 + rand(-120, 120), H * 0.5 - rand(0, 140), '✨', rand(18, 30));
+      if (Math.random() < 0.25) playSound('sparkle');
+    }
+    if (winTimer > 3 && winTimer < 7.5 && Math.random() < 0.08) {
+      addEmoji(W / 2 + rand(-160, 160), groundY() - rand(120, 200),
+               ['💕', '🫖', '☕', '✨'][Math.floor(Math.random() * 4)]);
+      if (Math.random() < 0.25) playSound('teacup');
+    }
+    if (winTimer > 7.8 && Math.random() < dt * 1.8)
+      addFirework(rand(W * 0.15, W * 0.85), rand(H * 0.1, H * 0.4));
+    if (winTimer > 11 && !winOverlayShown) {
+      winOverlayShown = true;
+      playAgainButton.textContent = 'Level 3 ▶';
+      showScreen(winScreen);
+    }
+  } else if (level === 3) {
+    // Level 3: board the jet (0-3.5) → take off (3.5-6) → fly into the clouds (6+)
+    if (winTimer < 3.5 && Math.random() < 0.12) {
+      addEmoji(W / 2 + rand(-150, 150), groundY() - rand(120, 220),
+               ['💕', '✨', '💖'][Math.floor(Math.random() * 3)]);
+      if (Math.random() < 0.3) playSound('kiss');
+    }
+    if (winTimer > 6 && Math.random() < dt * 1.2)
+      addFirework(rand(W * 0.2, W * 0.8), rand(H * 0.1, H * 0.4));
+    if (winTimer > 10.5 && !winOverlayShown) {
+      winOverlayShown = true;
+      playAgainButton.textContent = 'Level 4 ▶';
+      showScreen(winScreen);
+    }
+  } else if (level === 4) {
+    // Level 4: high five (0-3.6) → fly to New York past the Statue of Liberty (3.6+)
+    if (winTimer < 3.6 && Math.random() < 0.12) {
+      addEmoji(W / 2 + rand(-150, 150), groundY() - rand(120, 220), ['🙌', '✨', '💕'][Math.floor(Math.random() * 3)]);
+      if (Math.random() < 0.3) playSound('kiss');
+    }
+    if (winTimer > 4.2 && Math.random() < dt * 1.0)
+      addFirework(rand(W * 0.2, W * 0.8), rand(H * 0.08, H * 0.35));
+    if (winTimer > 10.5 && !winOverlayShown) {
+      winOverlayShown = true;
+      playAgainButton.textContent = 'Level 5 ▶';
+      showScreen(winScreen);
+    }
+  } else {
+    // Level 5: church party — confetti rains down + fireworks
+    if (Math.random() < 0.6) addConfetti();
+    if (winTimer > 2 && Math.random() < dt * 1.4)
+      addFirework(rand(W * 0.2, W * 0.8), rand(H * 0.08, H * 0.4));
+    if (winTimer > 9 && !winOverlayShown) {
+      winOverlayShown = true;
+      playAgainButton.textContent = '↻ Play Again 🎀';
+      showScreen(winScreen);
+    }
+  }
+}
+
+// ==================================================================
+//  DRAWING — backgrounds & world
+// ==================================================================
+const sx = (x) => x - camera;
+
+function drawSky() {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#cfe9ff'); g.addColorStop(0.45, '#eaddff'); g.addColorStop(1, '#ffd9ec');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const sunX = W - 110, sunY = 95;
+  ctx.fillStyle = '#fff0a3';
+  ctx.beginPath(); ctx.arc(sunX, sunY, 46, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f5b942';
+  ctx.beginPath(); ctx.arc(sunX - 14, sunY - 6, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(sunX + 14, sunY - 6, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#f5b942'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(sunX, sunY + 8, 16, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+}
+
+function drawCloud(x, y, s) {
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.beginPath();
+  ctx.arc(x, y, 26 * s, 0, Math.PI * 2);
+  ctx.arc(x + 28 * s, y - 12 * s, 22 * s, 0, Math.PI * 2);
+  ctx.arc(x + 56 * s, y, 24 * s, 0, Math.PI * 2);
+  ctx.fill();
+}
+function drawClouds() {
+  const drift = time * 8;
+  for (let i = 0; i < 7; i++) {
+    const cx = ((i * 420 + drift - camera * 0.3) % (W + 500)) - 250;
+    drawCloud(cx, 70 + (i % 3) * 55, 0.8 + (i % 3) * 0.25);
+  }
+}
+
+// An animated fallstreak-hole cloud shaped like the reference photo:
+// an irregular wispy loop, brighter hooked tuft at the upper-left, feathery
+// lower edge, and faint ice-crystal streaks falling through the middle.
+// Position stays put; only the wisps shimmer and sway.
+function drawHaloCloud(cx, cy, s, seed) {
+  if (cloudReady) {
+    // The actual photo — stationary, with only a soft living shimmer/breath/bob
+    const baseW = 185 * s;
+    const baseH = baseW * (cloudImg.height / cloudImg.width);
+    const breathe = 1 + Math.sin(time * 1.1 + seed) * 0.03;
+    const bob = Math.sin(time * 0.9 + seed) * 3;
+    const w = baseW * breathe, h = baseH * breathe;
+    ctx.save();
+    ctx.globalAlpha = 0.85 + 0.15 * Math.sin(time * 1.4 + seed);
+    ctx.drawImage(cloudImg, cx - w / 2, cy - h / 2 + bob, w, h);
+    ctx.restore();
+    return;
+  }
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(s, s);
+
+  // Points tracing the loop clockwise from the upper-left hook.
+  // r = blob size, a = brightness (heavier/brighter top + left, feathery bottom).
+  const pts = [
+    { x: -46, y: -58, r: 13, a: 0.95 },
+    { x: -30, y: -76, r: 13, a: 1.00 },   // hook tip curling up
+    { x: -6,  y: -74, r: 12, a: 0.92 },
+    { x: 20,  y: -71, r: 11, a: 0.86 },
+    { x: 44,  y: -60, r: 10, a: 0.78 },
+    { x: 61,  y: -39, r: 9,  a: 0.68 },
+    { x: 70,  y: -11, r: 8,  a: 0.58 },
+    { x: 68,  y: 18,  r: 8,  a: 0.52 },
+    { x: 57,  y: 43,  r: 8,  a: 0.48 },   // lower-right (feathery, faint)
+    { x: 38,  y: 59,  r: 8,  a: 0.44 },
+    { x: 10,  y: 65,  r: 8,  a: 0.42 },
+    { x: -18, y: 63,  r: 8,  a: 0.44 },
+    { x: -43, y: 54,  r: 9,  a: 0.54 },   // lower-left
+    { x: -62, y: 30,  r: 10, a: 0.66 },
+    { x: -71, y: 1,   r: 11, a: 0.78 },
+    { x: -65, y: -28, r: 12, a: 0.88 },
+    { x: -55, y: -48, r: 12, a: 0.94 },   // back to the hook
+  ];
+
+  // soft feathery band: overlapping radial-gradient blobs
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const wob = Math.sin(time * 1.3 + i * 0.6 + seed) * 2.2;     // gentle shimmer
+    const aa = p.a * (0.72 + 0.28 * (0.5 + 0.5 * Math.sin(time * 1.6 + i + seed)));
+    const rad = (p.r + wob) * 1.9;
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rad);
+    g.addColorStop(0, 'rgba(255,255,255,' + aa.toFixed(3) + ')');
+    g.addColorStop(0.6, 'rgba(255,255,255,' + (aa * 0.45).toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // brighter hooked tuft accent at the upper-left
+  const hookA = 0.85 + 0.15 * Math.sin(time * 1.5 + seed);
+  const hg = ctx.createRadialGradient(-38, -66, 0, -38, -66, 30);
+  hg.addColorStop(0, 'rgba(255,255,255,' + hookA.toFixed(3) + ')');
+  hg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hg;
+  ctx.beginPath(); ctx.ellipse(-38, -66, 30, 16, -0.5, 0, Math.PI * 2); ctx.fill();
+
+  // faint ice-crystal streaks falling through the hole
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  for (let i = 0; i < 4; i++) {
+    const wx = -16 + i * 11;
+    const sway = Math.sin(time * 1.4 + i + seed) * 4;
+    ctx.globalAlpha = 0.3 + 0.25 * (0.5 + 0.5 * Math.sin(time * 2 + i));
+    ctx.beginPath();
+    ctx.moveTo(wx, -4);
+    ctx.quadraticCurveTo(wx + sway, 16, wx + sway * 1.3, 36);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawCastle(scale, baseXoverride) {
+  const baseX = (baseXoverride !== undefined) ? baseXoverride : (350 - camera * 0.45);
+  const gy = groundY();
+  ctx.save();
+  ctx.translate(baseX, 0);
+  if (scale) ctx.scale(scale, scale);
+  ctx.fillStyle = '#e8d6ff';
+  ctx.fillRect(80, gy - 260, 200, 260);
+  for (const tx of [40, 280]) {
+    ctx.fillStyle = '#dcc6ff'; ctx.fillRect(tx, gy - 320, 60, 320);
+    ctx.fillStyle = '#ff9ecb';
+    ctx.beginPath(); ctx.moveTo(tx - 12, gy - 320); ctx.lineTo(tx + 30, gy - 400); ctx.lineTo(tx + 72, gy - 320); ctx.fill();
+    ctx.strokeStyle = '#a880d8'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(tx + 30, gy - 400); ctx.lineTo(tx + 30, gy - 430); ctx.stroke();
+    ctx.fillStyle = '#ffd166';
+    ctx.beginPath(); ctx.moveTo(tx + 30, gy - 430); ctx.lineTo(tx + 60, gy - 422); ctx.lineTo(tx + 30, gy - 414); ctx.fill();
+  }
+  ctx.fillStyle = '#b685e8';
+  ctx.beginPath(); ctx.arc(180, gy - 40, 34, Math.PI, 0); ctx.fill();
+  ctx.fillRect(146, gy - 40, 68, 40);
+  ctx.fillStyle = '#fff3b0';
+  for (const wx of [120, 230]) { ctx.beginPath(); ctx.arc(wx, gy - 180, 13, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+
+function drawGround() {
+  const gy = groundY();
+  if (level === 3) {
+    // ----- Stepped stone floor that follows the staircase terrain -----
+    ctx.fillStyle = '#e7dcf5';
+    ctx.beginPath(); ctx.moveTo(0, H);
+    for (let p = 0; p <= W; p += 4) ctx.lineTo(p, gy - terrainHeight(p + camera));
+    ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+    // step riser shading
+    ctx.fillStyle = '#d3c4ea';
+    let prevH = terrainHeight(camera);
+    for (let p = 4; p <= W; p += 4) {
+      const h = terrainHeight(p + camera);
+      if (h !== prevH) {
+        const yTop = gy - Math.max(h, prevH), yBot = gy - Math.min(h, prevH);
+        ctx.fillRect(p - 4, yTop, 4, yBot - yTop);
+      }
+      prevH = h;
+    }
+    // surface outline
+    ctx.strokeStyle = '#b9a9d4'; ctx.lineWidth = 3; ctx.beginPath();
+    for (let p = 0; p <= W; p += 4) { const yy = gy - terrainHeight(p + camera); if (p === 0) ctx.moveTo(p, yy); else ctx.lineTo(p, yy); }
+    ctx.stroke();
+    // pink carpet runner with gold edges
+    ctx.strokeStyle = '#ff6fa8'; ctx.lineWidth = 12; ctx.lineCap = 'butt'; ctx.beginPath();
+    for (let p = 0; p <= W; p += 4) { const yy = gy - terrainHeight(p + camera) + 7; if (p === 0) ctx.moveTo(p, yy); else ctx.lineTo(p, yy); }
+    ctx.stroke();
+    ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.stroke();
+    return;
+  }
+  if (level === 4) {
+    // sand following the little hill
+    ctx.fillStyle = '#f3e2b3';
+    ctx.beginPath(); ctx.moveTo(0, H);
+    for (let p = 0; p <= W; p += 4) ctx.lineTo(p, gy - terrainHeight(p + camera));
+    ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#e3cf95'; ctx.lineWidth = 4; ctx.beginPath();
+    for (let p = 0; p <= W; p += 4) { const yy = gy - terrainHeight(p + camera) + 10; if (p === 0) ctx.moveTo(p, yy); else ctx.lineTo(p, yy); }
+    ctx.stroke();
+    // tide pools to jump over
+    for (const pool of pools) {
+      const a = sx(pool.x0), b = sx(pool.x1); if (b < -40 || a > W + 40) continue;
+      const cx = (a + b) / 2, rw = (b - a) / 2 + 12, py = gy - 2;
+      ctx.fillStyle = '#3fa8cc'; ctx.beginPath(); ctx.ellipse(cx, py, rw, 15, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#7fd0e6'; ctx.beginPath(); ctx.ellipse(cx, py - 2, rw - 6, 9, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.ellipse(cx - rw * 0.3, py - 4, 5, 2, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    // little shells
+    for (let wx = 300; wx < worldLength; wx += 520) {
+      const x = sx(wx); if (x < -20 || x > W + 20) continue;
+      ctx.fillStyle = '#ffd6e8'; ctx.beginPath(); ctx.arc(x, gy + 18, 5, Math.PI, 0); ctx.fill();
+    }
+    return;
+  }
+  if (level === 5) {
+    // asphalt road following the terrain (flat, then up the hill near the end)
+    ctx.fillStyle = '#6e6b78';
+    ctx.beginPath(); ctx.moveTo(0, H);
+    for (let p = 0; p <= W; p += 4) ctx.lineTo(p, gy - terrainHeight(p + camera) + 18);
+    ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+    // sidewalk strip along the surface
+    ctx.strokeStyle = '#cfc6d8'; ctx.lineWidth = 14; ctx.beginPath();
+    for (let p = 0; p <= W; p += 4) { const yy = gy - terrainHeight(p + camera) + 9; if (p === 0) ctx.moveTo(p, yy); else ctx.lineTo(p, yy); }
+    ctx.stroke();
+    ctx.strokeStyle = '#b9b0c8'; ctx.lineWidth = 3; ctx.beginPath();
+    for (let p = 0; p <= W; p += 4) { const yy = gy - terrainHeight(p + camera) + 17; if (p === 0) ctx.moveTo(p, yy); else ctx.lineTo(p, yy); }
+    ctx.stroke();
+    // lane dashes mid-road, following the surface
+    ctx.strokeStyle = '#ffe066'; ctx.lineWidth = 7; ctx.setLineDash([44, 40]); ctx.beginPath();
+    for (let p = 0; p <= W; p += 4) { const yy = gy - terrainHeight(p + camera) + (H - gy) * 0.45; if (p === 0) ctx.moveTo(p, yy); else ctx.lineTo(p, yy); }
+    ctx.stroke(); ctx.setLineDash([]);
+    return;
+  }
+  ctx.fillStyle = '#c5ecc0'; ctx.fillRect(0, gy, W, H - gy);
+  ctx.fillStyle = '#ffe9c9'; ctx.fillRect(0, gy + 18, W, 46);
+  ctx.fillStyle = '#ffd9a8';
+  for (let i = 0; i < W / 70 + 2; i++) {
+    const px = (i * 70 - (camera % 70));
+    ctx.beginPath(); ctx.ellipse(px, gy + 41, 22, 10, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// ----- Level 3 building hall backdrop: columns + arched windows -----
+function drawHall() {
+  if (level !== 3) return;
+  const gy = groundY(), t = terrain;
+  const wallX0 = sx(t.up0 - 60), wallX1 = sx(t.down1 + 60);
+  const wallTop = gy - t.top - 175;
+  // back wall
+  ctx.fillStyle = 'rgba(232, 223, 250, 0.92)';
+  ctx.fillRect(wallX0, wallTop, wallX1 - wallX0, gy - wallTop);
+  // roofline
+  ctx.fillStyle = '#caa8d8';
+  ctx.fillRect(wallX0, wallTop, wallX1 - wallX0, 14);
+  // arched windows along the hall
+  for (let wx = t.up1 + 110; wx < t.down0; wx += 300) {
+    const xx = sx(wx); if (xx < -60 || xx > W + 60) continue;
+    ctx.fillStyle = '#cdb9ec';
+    ctx.fillRect(xx - 26, gy - t.top - 120, 52, 86);
+    ctx.beginPath(); ctx.arc(xx, gy - t.top - 120, 26, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#fff3b0';
+    ctx.fillRect(xx - 18, gy - t.top - 108, 36, 66);
+    ctx.beginPath(); ctx.arc(xx, gy - t.top - 108, 18, Math.PI, 0); ctx.fill();
+  }
+  // columns flanking the hall
+  for (let wx = t.up1; wx <= t.down0; wx += 240) {
+    const xx = sx(wx); if (xx < -40 || xx > W + 40) continue;
+    ctx.fillStyle = '#dccff0'; ctx.fillRect(xx - 14, gy - t.top - 150, 28, 150);
+    ctx.fillStyle = '#cbbbe8'; ctx.fillRect(xx - 20, gy - t.top - 150, 40, 14); ctx.fillRect(xx - 20, gy - t.top - 14, 40, 14);
+  }
+}
+
+// ----- Shadow Wolf knight (original cloaked, masked villain with a glowing sword) -----
+function drawKnight(k) {
+  const x = sx(k.x);
+  if (x < -120 || x > W + 120) return;
+  const gy = groundY(), floor = terrainHeight(k.x);
+  const baseY = gy - floor, bob = Math.sin(time * 4 + k.x) * 4;
+  // shadow
+  ctx.fillStyle = 'rgba(60,40,80,0.2)';
+  ctx.beginPath(); ctx.ellipse(x, baseY + 6, 30, 8, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.save();
+  ctx.translate(x, baseY - bob);
+  ctx.scale(k.dir, 1);
+  // cloak
+  ctx.fillStyle = '#3a2f4a';
+  ctx.beginPath(); ctx.moveTo(0, -120); ctx.lineTo(36, -4); ctx.lineTo(-36, -4); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#2c2338';
+  ctx.beginPath(); ctx.ellipse(0, -94, 32, 16, 0, 0, Math.PI * 2); ctx.fill();
+  // hood + dark mask
+  ctx.fillStyle = '#241c30';
+  ctx.beginPath(); ctx.arc(0, -106, 23, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#15101f';
+  ctx.beginPath(); ctx.ellipse(0, -102, 14, 17, 0, 0, Math.PI * 2); ctx.fill();
+  // glowing eyes
+  const glow = 0.55 + Math.sin(time * 6) * 0.4;
+  ctx.fillStyle = 'rgba(255,90,150,' + glow + ')';
+  ctx.beginPath(); ctx.ellipse(-5, -105, 3, 4, 0, 0, Math.PI * 2); ctx.ellipse(5, -105, 3, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#4a3f5e'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-5, -94); ctx.lineTo(5, -94); ctx.stroke();
+  // pointy wolf ears poking from the hood
+  ctx.fillStyle = '#241c30';
+  ctx.beginPath(); ctx.moveTo(-18, -118); ctx.lineTo(-12, -138); ctx.lineTo(-4, -120); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(18, -118); ctx.lineTo(12, -138); ctx.lineTo(4, -120); ctx.closePath(); ctx.fill();
+  // glowing magic sword
+  ctx.save(); ctx.translate(32, -72); ctx.rotate(-0.3);
+  ctx.strokeStyle = '#5a4a66'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, 18); ctx.lineTo(0, 4); ctx.stroke();
+  const blade = ctx.createLinearGradient(0, 4, 0, -60);
+  blade.addColorStop(0, '#ffd1f7'); blade.addColorStop(1, '#ff4f9d');
+  ctx.strokeStyle = blade; ctx.lineWidth = 8;
+  ctx.shadowColor = '#ff7ac0'; ctx.shadowBlur = 12;
+  ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(0, -60); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+  ctx.restore();
+}
+
+// ----- A cute original private jet (used at the finish + fly-away ending) -----
+function drawJet(cx, cy, s, angle) {
+  ctx.save(); ctx.translate(cx, cy); if (angle) ctx.rotate(angle); ctx.scale(s, s);
+  // wing (back)
+  ctx.fillStyle = '#d7e3f0';
+  ctx.beginPath(); ctx.moveTo(-10, 14); ctx.lineTo(75, 64); ctx.lineTo(100, 64); ctx.lineTo(45, 14); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#9aa7b5';
+  ctx.beginPath(); ctx.ellipse(40, 40, 22, 12, 0, 0, Math.PI * 2); ctx.fill();
+  // fuselage
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.ellipse(0, 0, 150, 38, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(140, -20); ctx.quadraticCurveTo(188, 0, 140, 20); ctx.fill();
+  // belly stripes
+  ctx.fillStyle = '#5aa9e6'; ctx.fillRect(-150, 7, 300, 16);
+  ctx.fillStyle = '#3a7bc8'; ctx.fillRect(-150, 21, 300, 7);
+  // windows
+  ctx.fillStyle = '#bfe3ff';
+  for (let i = -9; i <= 8; i++) { ctx.beginPath(); ctx.arc(i * 15, -6, 4, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#9bd0ff'; ctx.beginPath(); ctx.ellipse(122, -6, 12, 8, 0, 0, Math.PI * 2); ctx.fill();
+  // tail fin with a friendly gold star (no flags / names)
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.moveTo(-150, -10); ctx.lineTo(-186, -72); ctx.lineTo(-118, -12); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ffd166'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('★', -150, -34); ctx.textAlign = 'left';
+  ctx.restore();
+}
+
+// ----- Level 3 finish: the parked jet you walk toward -----
+function drawLevel3Finish() {
+  const x = sx(worldLength), gy = groundY();
+  if (x < -600 || x > W + 600) return;
+  const jx = x + 60, jy = gy - 80;
+  drawJet(jx, jy, 1.0, 0);
+  // airstairs up to the door
+  ctx.fillStyle = '#cfc3e3';
+  for (let i = 0; i < 6; i++) ctx.fillRect(x - 60 - i * 14, gy - 8 - i * 13, 18, 13);
+  // friendly suited pig host in a red cap, waving by the stairs
+  drawSuitPig(x - 130, gy - 8, 1.0, true);
+}
+
+// ================= LEVEL 4: BEACH =================
+function drawPalm(x, baseY) {
+  ctx.strokeStyle = '#b07a4a'; ctx.lineWidth = 9; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x, baseY); ctx.quadraticCurveTo(x - 14, baseY - 70, x - 4, baseY - 120); ctx.stroke();
+  ctx.fillStyle = '#5bc47a';
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI + i * (Math.PI / 5);
+    ctx.save(); ctx.translate(x - 4, baseY - 120); ctx.rotate(a);
+    ctx.beginPath(); ctx.ellipse(34, 0, 36, 11, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+  ctx.fillStyle = '#a8743f';
+  ctx.beginPath(); ctx.arc(x + 6, baseY - 112, 5, 0, Math.PI * 2); ctx.arc(x - 12, baseY - 110, 5, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawUmbrella(x, baseY, color) {
+  ctx.strokeStyle = '#cfc3e3'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(x, baseY); ctx.lineTo(x, baseY - 70); ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(x, baseY - 70, 44, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(x - 30 + i * 30, baseY - 70, 14, Math.PI, 0); ctx.fill(); }
+}
+
+function drawBeachBack() {
+  const gy = groundY();
+  // sea band along the horizon
+  const seaTop = gy - 54;
+  const sea = ctx.createLinearGradient(0, seaTop, 0, gy);
+  sea.addColorStop(0, '#7fd0e6'); sea.addColorStop(1, '#48b3d6');
+  ctx.fillStyle = sea; ctx.fillRect(0, seaTop, W, 54);
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 3;
+  for (let i = 0; i < 4; i++) {
+    const yy = seaTop + 12 + i * 11;
+    const off = (time * 18 + i * 90 - camera * 0.2) % 120;
+    ctx.beginPath();
+    for (let xx = -off; xx < W; xx += 120) ctx.ellipse(xx + 60, yy, 16, 3.5, 0, Math.PI, 0);
+    ctx.stroke();
+  }
+  // palms + umbrellas dotted along the beach
+  for (let wx = 250; wx < worldLength; wx += 900) {
+    const x = sx(wx); if (x < -90 || x > W + 90) continue;
+    drawPalm(x, gy - terrainHeight(wx));
+  }
+  for (let wx = 720; wx < worldLength; wx += 1400) {
+    const x = sx(wx); if (x < -90 || x > W + 90) continue;
+    drawUmbrella(x, gy - terrainHeight(wx), (Math.floor(wx / 720) % 2) ? '#ff8fc8' : '#ffd166');
+  }
+}
+
+function drawMoneyBag(x, y) {
+  ctx.fillStyle = '#e9d8a6';
+  ctx.beginPath(); ctx.ellipse(x, y + 6, 16, 18, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#cdb87f';
+  ctx.beginPath(); ctx.moveTo(x - 9, y - 10); ctx.lineTo(x + 9, y - 10); ctx.lineTo(x + 5, y - 2); ctx.lineTo(x - 5, y - 2); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#a8945c'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x - 8, y - 8); ctx.lineTo(x + 8, y - 8); ctx.stroke();
+  ctx.fillStyle = '#d6a73a'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('$', x, y + 11); ctx.textAlign = 'left';
+}
+
+function drawCoins() {
+  const gy = groundY();
+  for (const c of coins) {
+    if (c.taken) continue;
+    const x = sx(c.x); if (x < -40 || x > W + 40) continue;
+    const bob = Math.sin(time * 3 + c.x) * 6;
+    const y = gy - terrainHeight(c.x) - 58 + bob;
+    ctx.fillStyle = 'rgba(255,230,140,0.4)';
+    ctx.beginPath(); ctx.arc(x, y, 22 + Math.sin(time * 6) * 3, 0, Math.PI * 2); ctx.fill();
+    drawMoneyBag(x, y);
+  }
+}
+
+function drawBaby() {
+  const gy = groundY();
+  const x = sx(baby.x);
+  const y = gy - terrainHeight(baby.x) - 4 - baby.y;
+  drawMiniPig(x, y, 0.58, '#9bd8ff', false, 0, false);
+  // tiny pink bow
+  ctx.fillStyle = '#ff8fc8';
+  ctx.beginPath(); ctx.arc(x - 5, y - 63, 4, 0, Math.PI * 2); ctx.arc(x + 5, y - 63, 4, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawLevel4Finish() {
+  const x = sx(worldLength), gy = groundY();
+  if (x < -400 || x > W + 400) return;
+  // windsock pole
+  ctx.strokeStyle = '#cfc3e3'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(x, gy - 10); ctx.lineTo(x, gy - 110); ctx.stroke();
+  ctx.fillStyle = '#ff8fc8';
+  ctx.beginPath(); ctx.moveTo(x, gy - 110); ctx.lineTo(x + 50 + Math.sin(time * 3) * 6, gy - 100); ctx.lineTo(x, gy - 90); ctx.closePath(); ctx.fill();
+  // landing pad ★
+  ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 4; ctx.setLineDash([10, 8]);
+  ctx.beginPath(); ctx.ellipse(x + 40, gy + 6, 70, 16, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#ffd166'; ctx.font = 'bold 30px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('★', x + 40, gy - 2); ctx.textAlign = 'left';
+}
+
+// ================= LEVEL 5: CITY =================
+function drawCityBack() {
+  const gy = groundY(), base = gy - 36;
+  const cols = ['#cdbce6', '#b9c8e8', '#e6c6d8', '#c6dbe8', '#d8c6e8'];
+  const heights = [120, 180, 150, 220, 160, 200, 140, 190, 170, 210, 130, 175];
+  for (let i = 0; i < 70; i++) {
+    const x = i * 180 - camera * 0.5;
+    if (x < -140 || x > W + 140) continue;
+    const w = 120, h = heights[i % heights.length];
+    ctx.fillStyle = cols[i % cols.length];
+    ctx.fillRect(x, base - h, w - 16, h);
+    ctx.fillStyle = 'rgba(255,243,176,0.55)';
+    for (let wy = base - h + 12; wy < base - 12; wy += 18)
+      for (let wx = x + 8; wx < x + w - 24; wx += 14) ctx.fillRect(wx, wy, 6, 9);
+  }
+}
+
+function drawStreetProps() {
+  const gy = groundY();
+  for (let wx = 200; wx < worldLength; wx += 600) {
+    const x = sx(wx); if (x < -40 || x > W + 40) continue;
+    const base = gy - terrainHeight(wx);
+    ctx.strokeStyle = '#8a8398'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(x, base); ctx.lineTo(x, base - 130); ctx.stroke();
+    ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.ellipse(x, base - 134, 10, 7, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawCityNPC(x, y, n) {
+  const step = Math.sin(time * 12 + n.x) * 4;
+  ctx.save(); ctx.translate(x, y);
+  // legs
+  ctx.strokeStyle = n.type === 'police' ? '#2b3a66' : '#6b6b7a';
+  ctx.lineWidth = 7; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-8, -26); ctx.lineTo(-8 + step, -2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, -26);  ctx.lineTo(8 - step, -2);  ctx.stroke();
+  // shirt
+  ctx.fillStyle = n.color; ctx.fillRect(-14, -58, 28, 38);
+  // arms
+  ctx.strokeStyle = n.color; ctx.lineWidth = 6;
+  const flail = Math.sin(time * 12 + n.x) * 8;
+  ctx.beginPath(); ctx.moveTo(-12, -52); ctx.lineTo(-24, -44 - flail); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(12, -52);  ctx.lineTo(24, -44 + flail);  ctx.stroke();
+  // police badge
+  if (n.type === 'police') { ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.arc(-6, -44, 3, 0, Math.PI * 2); ctx.fill(); }
+  // pig head
+  ctx.fillStyle = '#fbbcd0'; ctx.beginPath(); ctx.arc(0, -74, 16, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-10, -88, 5, 8, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(9, -89, 5, 8, 0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f7a8bf'; ctx.beginPath(); ctx.ellipse(9, -72, 9, 6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3a2e3f'; ctx.beginPath(); ctx.arc(-2, -78, 2.4, 0, Math.PI * 2); ctx.arc(6, -78, 2.4, 0, Math.PI * 2); ctx.fill();
+  // police cap
+  if (n.type === 'police') {
+    ctx.fillStyle = '#1f2c52';
+    ctx.beginPath(); ctx.arc(0, -86, 15, Math.PI, 0); ctx.fill();
+    ctx.fillRect(-16, -86, 30, 5);
+    ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.arc(0, -92, 3, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawNPCs() {
+  const gy = groundY();
+  for (const n of npcs) {
+    if (!n.alive || n.arrived) continue;
+    const x = sx(n.x); if (x < -60 || x > W + 60) continue;
+    drawCityNPC(x, gy - terrainHeight(n.x) - 10, n);
+  }
+}
+
+// The pink convertible (original — not branded), with Piggies driving
+function drawPigCar(x, groundLine, facing) {
+  const S = 1.4;                                  // bigger car!
+  ctx.save(); ctx.translate(x, groundLine); ctx.scale(facing, 1); ctx.scale(S, S); ctx.translate(0, -22);
+  // shadow (sits on the ground line)
+  ctx.fillStyle = 'rgba(120,90,140,0.18)';
+  ctx.beginPath(); ctx.ellipse(0, 22, 64, 9, 0, 0, Math.PI * 2); ctx.fill();
+  // wheels
+  ctx.fillStyle = '#3a3346';
+  ctx.beginPath(); ctx.arc(-34, 6, 16, 0, Math.PI * 2); ctx.arc(34, 6, 16, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#cfc3e3'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(-34, 6, 7, 0, Math.PI * 2); ctx.arc(34, 6, 7, 0, Math.PI * 2); ctx.stroke();
+  // body
+  ctx.fillStyle = '#ff7ac0';
+  ctx.beginPath();
+  ctx.moveTo(-58, -4); ctx.lineTo(-46, -30); ctx.lineTo(22, -30); ctx.lineTo(40, -10);
+  ctx.lineTo(58, -10); ctx.quadraticCurveTo(66, -10, 66, 2); ctx.lineTo(-60, 2); ctx.closePath(); ctx.fill();
+  // windshield
+  ctx.fillStyle = '#cde6ff';
+  ctx.beginPath(); ctx.moveTo(-40, -30); ctx.lineTo(-30, -48); ctx.lineTo(6, -48); ctx.lineTo(18, -30); ctx.closePath(); ctx.fill();
+  // heart on the door
+  ctx.fillStyle = '#fff0f8'; ctx.font = '18px sans-serif'; ctx.fillText('♥', -10, -10);
+  // headlight
+  ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.arc(62, -3, 4, 0, Math.PI * 2); ctx.fill();
+  // Piggies driving
+  ctx.fillStyle = '#fbbcd0'; ctx.beginPath(); ctx.arc(-10, -54, 17, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-22, -70, 5, 9, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, -71, 5, 9, 0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f7a8bf'; ctx.beginPath(); ctx.ellipse(2, -52, 9, 6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3a2e3f'; ctx.beginPath(); ctx.arc(-12, -56, 3, 0, Math.PI * 2); ctx.arc(-3, -56, 3, 0, Math.PI * 2); ctx.fill();
+  // gold crown
+  ctx.fillStyle = '#ffd166';
+  ctx.beginPath();
+  ctx.moveTo(-20, -70); ctx.lineTo(-20, -80); ctx.lineTo(-14, -73); ctx.lineTo(-10, -82);
+  ctx.lineTo(-6, -73); ctx.lineTo(0, -80); ctx.lineTo(0, -70); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawChurch(x, gy, s) {
+  ctx.save(); ctx.translate(x, gy); ctx.scale(s, s);
+  ctx.fillStyle = '#f3e6cf'; ctx.fillRect(-90, -180, 180, 180);
+  ctx.fillStyle = '#c98ca0';
+  ctx.beginPath(); ctx.moveTo(-100, -180); ctx.lineTo(0, -240); ctx.lineTo(100, -180); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#f3e6cf'; ctx.fillRect(-22, -320, 44, 140);
+  ctx.fillStyle = '#c98ca0';
+  ctx.beginPath(); ctx.moveTo(-30, -320); ctx.lineTo(0, -380); ctx.lineTo(30, -320); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(0, -380); ctx.lineTo(0, -410); ctx.moveTo(-10, -398); ctx.lineTo(10, -398); ctx.stroke();
+  // arched door
+  ctx.fillStyle = '#b07a4a'; ctx.beginPath(); ctx.arc(0, -60, 34, Math.PI, 0); ctx.fill(); ctx.fillRect(-34, -60, 68, 60);
+  ctx.strokeStyle = '#8a5e34'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -94); ctx.lineTo(0, 0); ctx.stroke();
+  // rose window
+  ctx.fillStyle = '#9bd8ff'; ctx.beginPath(); ctx.arc(0, -150, 18, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#f3e6cf'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-18, -150); ctx.lineTo(18, -150); ctx.moveTo(0, -168); ctx.lineTo(0, -132); ctx.stroke();
+  // side windows
+  ctx.fillStyle = '#ffd1ec'; ctx.fillRect(-66, -150, 26, 50); ctx.fillRect(40, -150, 26, 50);
+  ctx.restore();
+}
+
+function drawLevel5Finish() {
+  const x = sx(worldLength), gy = groundY();
+  if (x < -700 || x > W + 700) return;
+  drawChurch(x, gy, 1.0);
+  // greeting pigs
+  drawMiniPig(x - 150, gy - 8, 1.0, '#ff9ecb', true, 0, false);
+  drawMiniPig(x - 108, gy - 6, 0.8, '#9bd8ff', true, 0, false);
+  drawMiniPig(x + 110, gy - 6, 0.85, '#ffd166', true, 0, false);
+  drawMiniPig(x + 152, gy - 8, 1.0, null, true, 0, false);
+  // bunting
+  ctx.strokeStyle = '#cfc3e3'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x - 160, gy - 200); ctx.quadraticCurveTo(x, gy - 180, x + 160, gy - 200); ctx.stroke();
+  const cols = ['#ff8fc8', '#ffd166', '#9bd8ff', '#c5a3ff'];
+  for (let i = 0; i < 9; i++) {
+    const tx = x - 150 + i * 38;
+    ctx.fillStyle = cols[i % 4];
+    ctx.beginPath(); ctx.moveTo(tx - 7, gy - 191); ctx.lineTo(tx + 7, gy - 191); ctx.lineTo(tx, gy - 179); ctx.closePath(); ctx.fill();
+  }
+  ctx.font = '20px sans-serif'; ctx.globalAlpha = 0.6 + Math.sin(time * 3) * 0.3;
+  ctx.fillText('💕', x - 60, gy - 212 + Math.sin(time * 2) * 6);
+  ctx.fillText('💗', x + 50, gy - 222 + Math.sin(time * 2 + 1) * 6);
+  ctx.globalAlpha = 1;
+}
+
+function drawBrick(x, y) {
+  ctx.fillStyle = '#b5532f'; ctx.fillRect(x - 14, y - 9, 28, 18);
+  ctx.strokeStyle = '#8a3c20'; ctx.lineWidth = 2; ctx.strokeRect(x - 14, y - 9, 28, 18);
+  ctx.beginPath();
+  ctx.moveTo(x - 14, y); ctx.lineTo(x + 14, y);
+  ctx.moveTo(x, y - 9); ctx.lineTo(x, y);
+  ctx.moveTo(x - 7, y); ctx.lineTo(x - 7, y + 9);
+  ctx.moveTo(x + 7, y); ctx.lineTo(x + 7, y + 9);
+  ctx.stroke();
+}
+
+function drawBricks() {
+  const gy = groundY();
+  for (const br of bricks) {
+    const x = sx(br.x); if (x < -40 || x > W + 40) continue;
+    const surf = gy - terrainHeight(br.x);
+    if (br.h > 0) {
+      const t = 1 - Math.min(br.h / 300, 1);                 // landing telegraph
+      ctx.fillStyle = 'rgba(60,40,40,' + (0.1 + 0.25 * t) + ')';
+      ctx.beginPath(); ctx.ellipse(x, surf - 2, 10 + 16 * t, 4 + 4 * t, 0, 0, Math.PI * 2); ctx.fill();
+      drawBrick(x, surf - br.h - 10);
+    } else {
+      ctx.globalAlpha = Math.max(br.landed / 0.5, 0) * 0.7;
+      drawBrick(x, surf - 10);
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+function drawHelicopter() {
+  if (!(level === 5 && helicopter.active)) return;
+  const x = sx(helicopter.x); if (x < -200 || x > W + 200) return;
+  const y = groundY() - terrainHeight(helicopter.x) - 330 + Math.sin(time * 2) * 8;
+  ctx.save(); ctx.translate(x, y);
+  // tail boom (points back-left)
+  ctx.fillStyle = '#6b5f80'; ctx.fillRect(-96, -6, 90, 12);
+  ctx.fillStyle = '#574c69';
+  ctx.beginPath(); ctx.moveTo(-96, -6); ctx.lineTo(-110, -22); ctx.lineTo(-96, -2); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#3a3346'; ctx.lineWidth = 3;
+  const ta = time * 30; ctx.beginPath(); ctx.moveTo(-104, -14 + Math.sin(ta) * 10); ctx.lineTo(-104, -14 - Math.sin(ta) * 10); ctx.stroke();
+  // body
+  ctx.fillStyle = '#7a6f96'; ctx.beginPath(); ctx.ellipse(0, 0, 46, 30, 0, 0, Math.PI * 2); ctx.fill();
+  // skids
+  ctx.strokeStyle = '#574c69'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(-30, 30); ctx.lineTo(34, 30); ctx.moveTo(-18, 24); ctx.lineTo(-18, 30); ctx.moveTo(20, 24); ctx.lineTo(20, 30); ctx.stroke();
+  // cockpit glass + big bad wolf pilot
+  ctx.fillStyle = '#bfe3ff'; ctx.beginPath(); ctx.ellipse(20, -2, 20, 16, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#9b8bb5'; ctx.beginPath(); ctx.arc(22, -2, 12, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#9b8bb5';
+  ctx.beginPath(); ctx.moveTo(14, -12); ctx.lineTo(12, -22); ctx.lineTo(20, -13); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(30, -12); ctx.lineTo(32, -22); ctx.lineTo(26, -13); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#2e2436'; ctx.beginPath(); ctx.arc(19, -4, 2.4, 0, Math.PI * 2); ctx.arc(27, -4, 2.4, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#4a3a56'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(15, -9); ctx.lineTo(24, -6); ctx.moveTo(30, -9); ctx.lineTo(24, -6); ctx.stroke();
+  ctx.fillStyle = '#5e4a70'; ctx.beginPath(); ctx.ellipse(24, 4, 6, 4, 0, 0, Math.PI * 2); ctx.fill(); // grin
+  // mast + spinning main rotor
+  ctx.strokeStyle = '#3a3346'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(0, -42); ctx.stroke();
+  ctx.strokeStyle = 'rgba(60,52,70,0.8)'; ctx.lineWidth = 5;
+  const rl = Math.abs(72 * Math.cos(time * 40)) + 14;
+  ctx.beginPath(); ctx.moveTo(-rl, -42); ctx.lineTo(rl, -42); ctx.stroke();
+  ctx.restore();
+}
+
+function drawFlower(x, y, color) {
+  ctx.strokeStyle = '#79c267'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 22); ctx.stroke();
+  ctx.fillStyle = color;
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    ctx.beginPath(); ctx.arc(x + Math.cos(a) * 8, y - 22 + Math.sin(a) * 8, 6, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = '#fff3b0';
+  ctx.beginPath(); ctx.arc(x, y - 22, 5, 0, Math.PI * 2); ctx.fill();
+}
+function drawFlowers() {
+  const colors = ['#ff9ecb', '#c5a3ff', '#ffd166', '#9bd8ff'];
+  const n = Math.ceil(worldLength / 145) + 2;
+  for (let i = 0; i < n; i++) {
+    const x = sx(150 + i * 145);
+    if (x < -30 || x > W + 30) continue;
+    drawFlower(x, groundY() - terrainHeight(150 + i * 145) + 14, colors[i % colors.length]);
+  }
+}
+
+function drawIceCreamTruck(wx) {
+  const x = sx(wx), gy = groundY();
+  if (x < -300 || x > W + 300) return;
+  ctx.save(); ctx.translate(x, gy);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(-90, -110, 180, 100);
+  ctx.fillStyle = '#ffb3d9'; ctx.fillRect(-90, -110, 180, 26);
+  ctx.fillStyle = '#9bd8ff'; ctx.fillRect(-66, -78, 56, 40);
+  ctx.fillStyle = '#5a5a6e';
+  ctx.beginPath(); ctx.arc(-50, -4, 16, 0, Math.PI * 2); ctx.arc(50, -4, 16, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f2c178';
+  ctx.beginPath(); ctx.moveTo(20, -110); ctx.lineTo(40, -110); ctx.lineTo(30, -78); ctx.fill();
+  ctx.fillStyle = '#ff9ecb';
+  ctx.beginPath(); ctx.arc(30, -116, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.font = '16px sans-serif'; ctx.fillText('🍦', 8, -86);
+  ctx.restore();
+}
+
+// ---------- Mini pig (family) — optional crown for "princess" look ----------
+function drawMiniPig(x, y, scale, dress, waving, lean, crown) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (lean) ctx.rotate(lean);
+  ctx.scale(scale, scale);
+
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-10, -26); ctx.lineTo(-10, -2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, -26);  ctx.lineTo(10, -2);  ctx.stroke();
+
+  if (dress) {
+    ctx.fillStyle = dress;
+    ctx.beginPath(); ctx.moveTo(-7, -60); ctx.lineTo(7, -60); ctx.lineTo(26, -22); ctx.lineTo(-26, -22); ctx.closePath(); ctx.fill();
+  } else {
+    ctx.fillStyle = '#fbbcd0';
+    ctx.beginPath(); ctx.ellipse(0, -42, 24, 26, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 7;
+  const wave = waving ? Math.sin(time * 6) * 10 : 0;
+  ctx.beginPath(); ctx.moveTo(-12, -50); ctx.lineTo(-26, -40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(12, -50);  ctx.lineTo(26, -64 - wave); ctx.stroke();
+
+  ctx.fillStyle = '#fbbcd0';
+  ctx.beginPath(); ctx.arc(0, -80, 22, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-12, -100, 6, 10, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(7, -101, 6, 10, 0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f7a8bf';
+  ctx.beginPath(); ctx.ellipse(14, -77, 11, 8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#d97a9c';
+  ctx.beginPath(); ctx.arc(11, -77, 2.2, 0, Math.PI * 2); ctx.arc(18, -77, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3a2e3f';
+  ctx.beginPath(); ctx.arc(1, -85, 3, 0, Math.PI * 2); ctx.arc(10, -85, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#d97a9c'; ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.arc(6, -73, 6, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.arc(-28, -44, 6, 0, Math.PI * 1.5); ctx.stroke();
+
+  if (crown) {
+    ctx.fillStyle = '#ffd166';
+    ctx.beginPath();
+    ctx.moveTo(-12, -97); ctx.lineTo(-12, -110); ctx.lineTo(-5, -101);
+    ctx.lineTo(0, -113); ctx.lineTo(5, -101); ctx.lineTo(12, -110); ctx.lineTo(12, -97);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ff5fa8';
+    ctx.beginPath(); ctx.arc(0, -106, 2.4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ----- A friendly pig VIP host: navy suit, red tie, plain red ball cap -----
+function drawSuitPig(x, y, scale, waving) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+
+  // trousers
+  ctx.strokeStyle = '#33405e'; ctx.lineWidth = 9; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-10, -26); ctx.lineTo(-10, -2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, -26);  ctx.lineTo(10, -2);  ctx.stroke();
+
+  // suit jacket
+  ctx.fillStyle = '#33405e';
+  ctx.beginPath(); ctx.moveTo(-9, -60); ctx.lineTo(9, -60); ctx.lineTo(28, -22); ctx.lineTo(-28, -22); ctx.closePath(); ctx.fill();
+  // white shirt
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.moveTo(-7, -58); ctx.lineTo(7, -58); ctx.lineTo(0, -30); ctx.closePath(); ctx.fill();
+  // red tie
+  ctx.fillStyle = '#e23b3b';
+  ctx.beginPath(); ctx.moveTo(-3, -56); ctx.lineTo(3, -56); ctx.lineTo(4, -34); ctx.lineTo(0, -28); ctx.lineTo(-4, -34); ctx.closePath(); ctx.fill();
+  // lapels
+  ctx.fillStyle = '#2a3550';
+  ctx.beginPath(); ctx.moveTo(-7, -58); ctx.lineTo(-2, -56); ctx.lineTo(-10, -40); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(7, -58); ctx.lineTo(2, -56); ctx.lineTo(10, -40); ctx.closePath(); ctx.fill();
+
+  // sleeves (one waving)
+  ctx.strokeStyle = '#33405e'; ctx.lineWidth = 8;
+  const wave = waving ? Math.sin(time * 6) * 10 : 0;
+  ctx.beginPath(); ctx.moveTo(-12, -52); ctx.lineTo(-26, -42); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(12, -52);  ctx.lineTo(26, -66 - wave); ctx.stroke();
+
+  // head
+  ctx.fillStyle = '#fbbcd0';
+  ctx.beginPath(); ctx.arc(0, -82, 22, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-12, -100, 6, 10, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(12, -101, 6, 10, 0.2, 0, Math.PI * 2); ctx.fill();
+  // snout
+  ctx.fillStyle = '#f7a8bf';
+  ctx.beginPath(); ctx.ellipse(13, -79, 11, 8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#d97a9c';
+  ctx.beginPath(); ctx.arc(10, -79, 2.2, 0, Math.PI * 2); ctx.arc(17, -79, 2.2, 0, Math.PI * 2); ctx.fill();
+  // eyes + smile
+  ctx.fillStyle = '#3a2e3f';
+  ctx.beginPath(); ctx.arc(-1, -86, 3, 0, Math.PI * 2); ctx.arc(8, -86, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#d97a9c'; ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.arc(5, -74, 6, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+
+  // plain red baseball cap (dome + forward bill + top button)
+  ctx.fillStyle = '#e23b3b';
+  ctx.beginPath(); ctx.arc(0, -98, 22, Math.PI, 0); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(20, -98, 16, 6, 0, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = '#b32d2d';
+  ctx.beginPath(); ctx.arc(0, -120, 3, 0, Math.PI * 2); ctx.fill();
+
+  ctx.restore();
+}
+
+function drawPicnicAndSalon() {
+  const x = sx(worldLength), gy = groundY();
+  if (x < -500 || x > W + 500) return;
+  ctx.save(); ctx.translate(x, gy);
+
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) {
+    ctx.fillStyle = (r + c) % 2 ? '#ffb3d9' : '#ffffff';
+    ctx.fillRect(-120 + c * 40, 6 + r * 12, 40, 12);
+  }
+  ctx.fillStyle = '#c98c4b'; ctx.fillRect(-40, -34, 60, 36);
+  ctx.strokeStyle = '#a96f33'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(-10, -34, 26, Math.PI, 0); ctx.stroke();
+  ctx.font = '26px sans-serif'; ctx.fillText('🧁', 36, -6); ctx.fillText('🍓', 70, 2);
+
+  // Level 2 shows a tea-party banner instead of nails
+  if (level === 2) {
+    ctx.fillStyle = '#e3c6ff'; ctx.fillRect(160, -90, 130, 90);
+    ctx.fillStyle = '#ff9ecb'; ctx.fillRect(152, -106, 146, 20);
+    ctx.fillStyle = '#8a4fb5'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('🫖 TEA', 225, -91); ctx.textAlign = 'left';
+    ctx.font = '24px sans-serif'; ctx.fillText('☕', 180, -36); ctx.fillText('✨', 240, -50);
+  } else {
+    ctx.fillStyle = '#e3c6ff'; ctx.fillRect(160, -90, 130, 90);
+    ctx.fillStyle = '#ff9ecb'; ctx.fillRect(152, -106, 146, 20);
+    ctx.fillStyle = '#8a4fb5'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('💅 NAILS', 225, -91); ctx.textAlign = 'left';
+    ctx.font = '24px sans-serif'; ctx.fillText('💖', 180, -36); ctx.fillText('✨', 240, -50);
+  }
+  ctx.restore();
+
+  drawMiniPig(x - 200, gy - 8, 1.05, '#ff9ecb', true, 0, false);
+  drawMiniPig(x - 250, gy - 8, 1.15, null,      true, 0, false);
+  drawMiniPig(x - 155, gy - 4, 0.65, '#9bd8ff', true, 0, false);
+
+  ctx.font = '20px sans-serif';
+  ctx.globalAlpha = 0.6 + Math.sin(time * 3) * 0.3;
+  ctx.fillText('💕', x - 235, gy - 150 + Math.sin(time * 2) * 6);
+  ctx.fillText('💗', x - 175, gy - 165 + Math.sin(time * 2 + 1) * 6);
+  ctx.globalAlpha = 1;
+
+  let spot = 0;
+  for (const pr of princesses) {
+    if (pr.arrived && pr.alive) { drawPrincessAt(x - 320 - spot * 55, gy - 10, pr, false); spot++; }
+  }
+}
+
+// ---------- Piggies ----------
+function drawPig() {
+  if (pig.eaten) return;
+  if (pig.driving) {
+    drawPigCar(sx(pig.x), groundY() - terrainHeight(pig.x) - pig.y, pig.facing);
+    return;
+  }
+  const gy = groundY();
+  const floor = terrainHeight(pig.x);
+  const x = sx(pig.x);
+  const y = gy - floor - 12 - pig.y;
+  const step = pig.walking ? Math.sin(time * 14) * 5 : 0;
+
+  // speed-boost streaks behind her
+  if (pig.boost > 0) {
+    ctx.strokeStyle = 'rgba(155,216,255,0.7)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const sxp = x - pig.facing * (34 + i * 14);
+      ctx.beginPath(); ctx.moveTo(sxp, y - 30 - i * 12); ctx.lineTo(sxp - pig.facing * 18, y - 30 - i * 12); ctx.stroke();
+    }
+  }
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(pig.facing, 1);
+
+  if (pig.power > 0) {
+    ctx.fillStyle = 'rgba(255, 240, 150, 0.35)';
+    ctx.beginPath(); ctx.arc(0, -55, 70, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 9; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-12, -28); ctx.lineTo(-12 + step, -2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(12, -28);  ctx.lineTo(12 - step, -2);  ctx.stroke();
+
+  ctx.fillStyle = '#ffd97a';
+  ctx.beginPath(); ctx.moveTo(-8, -68); ctx.lineTo(8, -68); ctx.lineTo(30, -24); ctx.lineTo(-30, -24); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ffce5c';
+  for (const bx of [-22, -7.5, 7.5, 22]) { ctx.beginPath(); ctx.arc(bx, -24, 7.5, 0, Math.PI); ctx.fill(); }
+
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 8;
+  const wave = pig.walking ? Math.sin(time * 14) * 6 : 0;
+  ctx.beginPath(); ctx.moveTo(-14, -56); ctx.lineTo(-30, -44 + wave); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(14, -56);  ctx.lineTo(30, -44 - wave);  ctx.stroke();
+
+  if (pig.power > 0) {
+    ctx.strokeStyle = '#c9b6ff'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(30, -44 - wave); ctx.lineTo(48, -86); ctx.stroke();
+    const grad = ctx.createLinearGradient(48, -86, 60, -118);
+    grad.addColorStop(0, '#fff8c4'); grad.addColorStop(1, '#ffe05c');
+    ctx.strokeStyle = grad; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(48, -86); ctx.lineTo(60, -118); ctx.stroke();
+    ctx.fillStyle = '#fffce0'; ctx.font = '18px sans-serif'; ctx.fillText('✨', 52, -118);
+  }
+
+  ctx.fillStyle = '#fbbcd0';
+  ctx.beginPath(); ctx.arc(0, -92, 26, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-14, -116, 7, 12, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(8, -118, 7, 12, 0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f7a8bf';
+  ctx.beginPath(); ctx.ellipse(18, -88, 13, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#d97a9c';
+  ctx.beginPath(); ctx.arc(14, -88, 2.6, 0, Math.PI * 2); ctx.arc(22, -88, 2.6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3a2e3f';
+  ctx.beginPath(); ctx.arc(2, -98, 3.4, 0, Math.PI * 2); ctx.arc(13, -98, 3.4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,130,170,0.5)';
+  ctx.beginPath(); ctx.arc(-8, -86, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#d97a9c'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(8, -84, 7, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(-32, -50, 7, 0, Math.PI * 1.5); ctx.stroke();
+
+  ctx.restore();
+}
+
+// ---------- Princess NPC ----------
+function drawPrincessAt(x, y, pr, walking) {
+  const step = walking ? Math.sin(time * 12 + pr.x) * 4 : 0;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = '#f3c9a8'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-8, -26); ctx.lineTo(-8 + step, -2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, -26);  ctx.lineTo(8 - step, -2);  ctx.stroke();
+  ctx.fillStyle = pr.dress;
+  ctx.beginPath(); ctx.moveTo(-6, -62); ctx.lineTo(6, -62); ctx.lineTo(26, -22); ctx.lineTo(-26, -22); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(-15, -38, 30, 4);
+  ctx.strokeStyle = '#f3c9a8'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(-10, -52); ctx.lineTo(-22, -40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, -52);  ctx.lineTo(22, -40);  ctx.stroke();
+  ctx.fillStyle = '#f8d8b8';
+  ctx.beginPath(); ctx.arc(0, -78, 17, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = pr.hair;
+  ctx.beginPath(); ctx.arc(0, -84, 17, Math.PI * 0.95, Math.PI * 2.05); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-15, -68, 5, 14, 0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(15, -68, 5, 14, -0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffd166';
+  ctx.beginPath();
+  ctx.moveTo(-9, -96); ctx.lineTo(-9, -106); ctx.lineTo(-4, -99); ctx.lineTo(0, -108);
+  ctx.lineTo(4, -99); ctx.lineTo(9, -106); ctx.lineTo(9, -96); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#3a2e3f';
+  ctx.beginPath(); ctx.arc(-5, -79, 2.4, 0, Math.PI * 2); ctx.arc(5, -79, 2.4, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#c96a8a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, -72, 5, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+  ctx.restore();
+}
+function drawPrincesses() {
+  const gy = groundY();
+  for (const pr of princesses) {
+    if (!pr.alive || pr.arrived) continue;
+    const x = sx(pr.x);
+    if (x < -80 || x > W + 80) continue;
+    drawPrincessAt(x, gy - terrainHeight(pr.x) - 10, pr, true);
+  }
+}
+
+// ---------- Bouncing wolf ----------
+function drawWolf(w) {
+  const x = sx(w.x);
+  if (x < -180 || x > W + 180) return;
+  const gy = groundY();
+  const floor = terrainHeight(w.x);
+  const bounce = w.currentBounce || 0;
+  const y = gy - floor - 12 - bounce;
+  const squish = 1 - Math.min(bounce / 400, 0.15);
+  const justAte = w.fed > 0;
+  const licking = justAte && (time - w.fed < 3.0);
+  const bb = justAte ? 18 : 0;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1, squish);
+
+  ctx.fillStyle = '#9b8bb5';
+  ctx.beginPath(); ctx.ellipse(0, -55, 42 + bb, 48 + bb * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#cfc3e3';
+  ctx.beginPath(); ctx.ellipse(0, -45, 26 + bb, 30 + bb * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+  if (justAte) { ctx.strokeStyle = '#9b8bb5'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, -40, 5, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke(); }
+
+  ctx.strokeStyle = '#9b8bb5'; ctx.lineWidth = 11; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-18, -16); ctx.lineTo(-18, -2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(18, -16);  ctx.lineTo(18, -2);  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  for (const lx of [-18, 18]) {
+    ctx.beginPath(); ctx.moveTo(lx - 6, -2); ctx.lineTo(lx - 3, 3); ctx.lineTo(lx, -2); ctx.lineTo(lx + 3, 3); ctx.lineTo(lx + 6, -2); ctx.fill();
+  }
+
+  ctx.fillStyle = '#9b8bb5';
+  ctx.beginPath(); ctx.arc(0, -118, 30, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-30, -132); ctx.lineTo(-26, -166); ctx.lineTo(-10, -142); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(30, -132); ctx.lineTo(26, -166); ctx.lineTo(10, -142); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#d8b8cc';
+  ctx.beginPath(); ctx.moveTo(-26, -138); ctx.lineTo(-24, -156); ctx.lineTo(-15, -142); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(26, -138); ctx.lineTo(24, -156); ctx.lineTo(15, -142); ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = '#b3a4c9';
+  ctx.beginPath(); ctx.ellipse(-26, -110, 20, 12, 0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#4a3a56';
+  ctx.beginPath(); ctx.arc(-42, -112, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(-44, -114, 2.4, 0, Math.PI * 2); ctx.fill();
+
+  const lookL = Math.sin(time * 2 + w.phase) * 2;
+  ctx.fillStyle = '#fff7d6';
+  ctx.beginPath(); ctx.ellipse(-10, -128, 9, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(10, -128, 9, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2e2436';
+  ctx.beginPath(); ctx.arc(-7 + lookL, -127, 3.4, 0, Math.PI * 2); ctx.arc(7 - lookL, -127, 3.4, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#4a3a56'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-19, -142); ctx.lineTo(-3, -136); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(19, -142);  ctx.lineTo(3, -136);  ctx.stroke();
+
+  ctx.fillStyle = '#5e4a70';
+  ctx.beginPath(); ctx.ellipse(-8, -102, 14, 9, 0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  for (const fx of [-17, -8, 1]) { ctx.beginPath(); ctx.moveTo(fx, -109); ctx.lineTo(fx + 4, -100); ctx.lineTo(fx + 8, -109); ctx.fill(); }
+
+  ctx.fillStyle = '#ff8fb0';
+  if (licking) { const lick = Math.sin(time * 7) * 14; ctx.beginPath(); ctx.ellipse(-22 + lick, -100, 10, 6, 0.3, 0, Math.PI * 2); ctx.fill(); }
+  else { ctx.beginPath(); ctx.ellipse(-6, -95, 6, 5, 0.1, 0, Math.PI * 2); ctx.fill(); }
+
+  if (!justAte && bounce > 90) {
+    ctx.fillStyle = 'rgba(160, 210, 255, 0.8)';
+    ctx.beginPath(); ctx.ellipse(-30, -92 + Math.sin(time * 8) * 3, 3, 5, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.strokeStyle = '#9b8bb5'; ctx.lineWidth = 8;
+  ctx.beginPath(); ctx.moveTo(38 + bb, -60);
+  ctx.quadraticCurveTo(58 + bb, -70 + Math.sin(time * 5 + w.phase) * 8, 52 + bb, -90); ctx.stroke();
+
+  if (licking) {
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.beginPath(); ctx.roundRect(20, -190, 96, 36, 16); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(34, -154); ctx.lineTo(28, -140); ctx.lineTo(50, -154); ctx.fill();
+    ctx.fillStyle = '#8a4fb5'; ctx.font = 'bold 17px sans-serif'; ctx.fillText('nom nom!', 32, -166);
+  }
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(120, 90, 140, 0.18)';
+  ctx.beginPath(); ctx.ellipse(x, gy - floor + 6, (44 + bb) - bounce * 0.1, 9, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+// ---------- Motorcycle wolf villain (Level 2) ----------
+function drawMoto(m) {
+  const x = sx(m.x);
+  if (x < -220 || x > W + 220) return;
+  const gy = groundY();
+  const floor = terrainHeight(m.x);
+  ctx.save();
+  ctx.translate(x, gy - floor - 18);
+  ctx.scale(m.dir, 1);                       // face the way it's going
+  ctx.scale(1.35, 1.35);                     // BIGGER bike + rider
+
+  // Wheels
+  ctx.fillStyle = '#3a3346';
+  for (const wx of [-30, 30]) {
+    ctx.beginPath(); ctx.arc(wx, 0, 18, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#7a6f8c'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(wx, 0, 9, 0, Math.PI * 2); ctx.stroke();
+    // spinning spoke
+    ctx.strokeStyle = '#cfc3e3'; ctx.lineWidth = 3;
+    const a = time * 12 * m.dir;
+    ctx.beginPath(); ctx.moveTo(wx + Math.cos(a) * 9, Math.sin(a) * 9); ctx.lineTo(wx - Math.cos(a) * 9, -Math.sin(a) * 9); ctx.stroke();
+  }
+
+  // Hot-pink bike body
+  ctx.fillStyle = '#ff5fa8';
+  ctx.beginPath();
+  ctx.moveTo(-34, -8); ctx.lineTo(26, -8); ctx.lineTo(34, -22); ctx.lineTo(-6, -22); ctx.closePath(); ctx.fill();
+  ctx.fillRect(-12, -30, 22, 12);            // seat hump
+  // Handlebars
+  ctx.strokeStyle = '#4a3a56'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(30, -20); ctx.lineTo(44, -40); ctx.lineTo(52, -38); ctx.stroke();
+  // Exhaust puff at the back
+  ctx.fillStyle = 'rgba(200,200,210,0.5)';
+  ctx.beginPath(); ctx.arc(-46, -8 + Math.sin(time * 10) * 2, 7, 0, Math.PI * 2); ctx.fill();
+
+  // The goofy wolf rider (BIG now, leaning forward)
+  ctx.save();
+  ctx.translate(-2, -36);
+  ctx.scale(0.82, 0.82);
+  // body
+  ctx.fillStyle = '#9b8bb5';
+  ctx.beginPath(); ctx.ellipse(0, -30, 26, 30, 0, 0, Math.PI * 2); ctx.fill();
+  // head
+  ctx.fillStyle = '#9b8bb5';
+  ctx.beginPath(); ctx.arc(8, -66, 22, 0, Math.PI * 2); ctx.fill();
+  // ears
+  ctx.beginPath(); ctx.moveTo(-8, -78); ctx.lineTo(-4, -104); ctx.lineTo(8, -86); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(24, -78); ctx.lineTo(22, -104); ctx.lineTo(12, -86); ctx.closePath(); ctx.fill();
+  // snout
+  ctx.fillStyle = '#b3a4c9';
+  ctx.beginPath(); ctx.ellipse(28, -60, 16, 9, 0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#4a3a56';
+  ctx.beginPath(); ctx.arc(42, -60, 5, 0, Math.PI * 2); ctx.fill();
+  // racing goggles
+  ctx.fillStyle = '#2e2436';
+  ctx.beginPath(); ctx.ellipse(4, -70, 8, 6, 0, 0, Math.PI * 2); ctx.ellipse(18, -70, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-4, -74); ctx.lineTo(-14, -76); ctx.stroke();
+  ctx.fillStyle = '#9bd8ff';
+  ctx.beginPath(); ctx.arc(4, -70, 3, 0, Math.PI * 2); ctx.arc(18, -70, 3, 0, Math.PI * 2); ctx.fill();
+  // tongue flapping in the wind
+  ctx.fillStyle = '#ff8fb0';
+  ctx.beginPath(); ctx.ellipse(40, -52 + Math.sin(time * 12) * 2, 7, 4, 0.2, 0, Math.PI * 2); ctx.fill();
+  // little paws on handlebars
+  ctx.strokeStyle = '#9b8bb5'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(14, -40); ctx.lineTo(34, -34); ctx.stroke();
+  ctx.restore();
+
+  ctx.restore();
+
+  // ground shadow
+  ctx.fillStyle = 'rgba(120, 90, 140, 0.18)';
+  ctx.beginPath(); ctx.ellipse(x, gy - floor + 8, 68, 11, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+// ---------- Pickups ----------
+function drawPickups() {
+  const gy = groundY();
+  for (const p of pickups) {
+    if (p.taken) continue;
+    const x = sx(p.x);
+    if (x < -60 || x > W + 60) continue;
+    const bob = Math.sin(time * 3 + p.x) * 8;
+    const y = groundY() - terrainHeight(p.x) - 60 + bob;
+    if (p.type === 'wand') {
+      ctx.fillStyle = 'rgba(255, 240, 150, 0.4)';
+      ctx.beginPath(); ctx.arc(x, y, 34 + Math.sin(time * 6) * 4, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.translate(x, y); ctx.rotate(-0.6);
+      ctx.strokeStyle = '#c9b6ff'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0, 20); ctx.lineTo(0, -4); ctx.stroke();
+      const grad = ctx.createLinearGradient(0, -4, 0, -28);
+      grad.addColorStop(0, '#fff8c4'); grad.addColorStop(1, '#ffe05c');
+      ctx.strokeStyle = grad; ctx.lineWidth = 9;
+      ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(0, -28); ctx.stroke();
+      ctx.restore();
+      ctx.font = '20px sans-serif'; ctx.fillText('✨', x + 8, y - 24);
+    } else {
+      // ice cream now glows blue to hint "speed"
+      ctx.fillStyle = 'rgba(155,216,255,0.4)';
+      ctx.beginPath(); ctx.arc(x, y - 6, 26 + Math.sin(time * 6) * 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#f2c178';
+      ctx.beginPath(); ctx.moveTo(x - 12, y - 4); ctx.lineTo(x + 12, y - 4); ctx.lineTo(x, y + 26); ctx.fill();
+      ctx.fillStyle = '#9bd8ff';
+      ctx.beginPath(); ctx.arc(x, y - 12, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d6f0ff';
+      ctx.beginPath(); ctx.arc(x - 5, y - 16, 5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+// ---------- Particles ----------
+function drawParticles() {
+  for (const s of sparkles) {
+    ctx.globalAlpha = Math.max(s.life, 0);
+    ctx.fillStyle = s.color; ctx.font = '14px sans-serif';
+    ctx.fillText('✦', sx(s.x), s.y);
+  }
+  ctx.globalAlpha = 1;
+  for (const p of puffs) {
+    ctx.globalAlpha = Math.max(p.life * 0.8, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(sx(p.x), p.y, p.r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+function drawScreenParticles() {
+  for (const ep of emojiParticles) {
+    ctx.globalAlpha = Math.min(ep.life, 1);
+    ctx.font = ep.size + 'px sans-serif'; ctx.fillText(ep.char, ep.x, ep.y);
+  }
+  ctx.globalAlpha = 1;
+  for (const f of fireworks) {
+    ctx.globalAlpha = Math.min(f.life, 1);
+    ctx.fillStyle = f.color;
+    ctx.beginPath(); ctx.arc(f.x, f.y, 3.2, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- HUD ----------
+function drawHUD() {
+  let barY = 24;
+  if (pig.power > 0) {
+    const w = 200, h = 16, x = W / 2 - w / 2;
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath(); ctx.roundRect(x - 4, barY - 4, w + 8, h + 8, 12); ctx.fill();
+    const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+    grad.addColorStop(0, '#ffd166'); grad.addColorStop(1, '#ff8fc8');
+    ctx.fillStyle = grad; ctx.beginPath(); ctx.roundRect(x, barY, w * (pig.power / 3), h, 9); ctx.fill();
+    ctx.font = '20px sans-serif'; ctx.fillText('✨', x - 30, barY + 15);
+    barY += 30;
+  }
+  if (pig.boost > 0) {
+    const w = 200, h = 16, x = W / 2 - w / 2;
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath(); ctx.roundRect(x - 4, barY - 4, w + 8, h + 8, 12); ctx.fill();
+    const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+    grad.addColorStop(0, '#9bd8ff'); grad.addColorStop(1, '#5fc0ff');
+    ctx.fillStyle = grad; ctx.beginPath(); ctx.roundRect(x, barY, w * (pig.boost / 3), h, 9); ctx.fill();
+    ctx.font = '20px sans-serif'; ctx.fillText('🍦', x - 30, barY + 15);
+  }
+
+  // first-seconds touch hint
+  if (isTouch && state === 'playing' && time < 6) {
+    ctx.globalAlpha = 0.5 + Math.sin(time * 4) * 0.3;
+    ctx.font = 'bold 40px sans-serif';
+    ctx.fillText('⬅️', 20, H - 130);
+    ctx.fillText('➡️', W - 72, H - 130);
+    ctx.globalAlpha = 1;
+  }
+
+  // money counter (Level 4)
+  if (level === 4) {
+    ctx.font = 'bold 24px sans-serif';
+    ctx.fillStyle = '#b6488f';
+    ctx.fillText('💰 ' + money, 18, 40);
+  }
+}
+
+// ==================================================================
+//  WIN CUTSCENES
+// ==================================================================
+const NAIL_COLORS = ['#ff5fa8', '#c478ff', '#ffd166', '#5fd0ff'];
+
+function survivors() { return princesses.filter(p => p.alive && p.arrived); }
+
+function drawWinCutscene() {
+  if (level === 1) drawWinLevel1();
+  else if (level === 2) drawWinLevel2();
+  else if (level === 3) drawWinLevel3();
+  else if (level === 4) drawWinLevel4();
+  else drawWinLevel5();
+  // the photo cloud appears only during the win animations, stationary in the sky
+  drawHaloCloud(W * 0.30, H * 0.20, 1.15, 0);
+  drawHaloCloud(W * 0.74, H * 0.16, 0.75, 2.3);
+  drawScreenParticles();
+}
+
+// ----- LEVEL 5: arrive at the church, big pig party -----
+function drawWinLevel5() {
+  const gy = groundY();
+  drawSky(); drawClouds(); drawCityBack();
+  ctx.fillStyle = '#6e6b78'; ctx.fillRect(0, gy, W, H - gy);
+  ctx.fillStyle = '#cfc6d8'; ctx.fillRect(0, gy, W, 12);
+  const cx = W / 2;
+  drawChurch(cx, gy, 1.05);
+  // the pink car parked out front
+  drawPigCar(cx - 230, gy, 1);
+  // dancing greeting pigs
+  const dancers = [
+    { dx: -150, d: '#ff9ecb', s: 1.0 }, { dx: -92, d: '#9bd8ff', s: 0.8 },
+    { dx: 84, d: '#ffd166', s: 0.85 }, { dx: 144, d: null, s: 1.0 }, { dx: 206, d: '#c5a3ff', s: 0.9 },
+  ];
+  for (let i = 0; i < dancers.length; i++) {
+    const bob = Math.abs(Math.sin(time * 4 + i)) * 10;
+    drawMiniPig(cx + dancers[i].dx, gy - 8 - bob, dancers[i].s, dancers[i].d, true, Math.sin(time * 4 + i) * 0.1, false);
+  }
+  ctx.font = '30px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('🎉 ⛪ 🎉', cx, 60 + Math.sin(time * 3) * 6); ctx.textAlign = 'left';
+}
+
+// ----- LEVEL 4: high five → fly to New York past the Statue of Liberty -----
+function drawHighFivePig(x, y, scale, dress, armDir, slap) {
+  drawMiniPig(x, y, scale, dress, false, 0, dress === '#ff7ac0');
+  ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
+  ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+  const handY = -86 - slap * 8;
+  ctx.beginPath(); ctx.moveTo(armDir * 10, -52); ctx.lineTo(armDir * 22, handY); ctx.stroke();
+  ctx.fillStyle = '#fbbcd0'; ctx.beginPath(); ctx.arc(armDir * 24, handY, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawSkyline(baseY) {
+  const heights = [80, 130, 170, 110, 150, 200, 90, 140, 180, 120, 160, 100, 190, 130];
+  let x = 0;
+  for (let i = 0; i < 60; i++) {
+    const w = 30 + (i * 37 % 26), h = heights[i % heights.length];
+    ctx.fillStyle = 'rgba(120,130,170,0.7)';
+    ctx.fillRect(x, baseY - h, w, h);
+    ctx.fillStyle = 'rgba(255,243,176,0.5)';
+    for (let wy = baseY - h + 10; wy < baseY - 8; wy += 16)
+      for (let wx = x + 5; wx < x + w - 5; wx += 12) ctx.fillRect(wx, wy, 5, 7);
+    x += w + 6; if (x > W) break;
+  }
+}
+
+function drawStatueOfLiberty(x, baseY, s) {
+  ctx.save(); ctx.translate(x, baseY); ctx.scale(s, s);
+  // pedestal
+  ctx.fillStyle = '#bdae8a'; ctx.fillRect(-42, -72, 84, 72);
+  ctx.fillStyle = '#a89a76'; ctx.fillRect(-50, -86, 100, 16);
+  // robe
+  ctx.fillStyle = '#86c9ad';
+  ctx.beginPath(); ctx.moveTo(-26, -72); ctx.lineTo(26, -72); ctx.lineTo(16, -180); ctx.lineTo(-16, -180); ctx.closePath(); ctx.fill();
+  // left arm + tablet
+  ctx.strokeStyle = '#86c9ad'; ctx.lineWidth = 12; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-12, -168); ctx.lineTo(-30, -150); ctx.stroke();
+  ctx.fillStyle = '#9ad3ba'; ctx.fillRect(-46, -162, 20, 26);
+  // head
+  ctx.fillStyle = '#9ad3ba'; ctx.beginPath(); ctx.arc(0, -196, 15, 0, Math.PI * 2); ctx.fill();
+  // crown spikes
+  ctx.fillStyle = '#86c9ad';
+  for (let i = 0; i < 7; i++) {
+    const a = -Math.PI * 0.95 + (i / 6) * Math.PI * 0.9;
+    const bx = Math.cos(a) * 15, by = -196 + Math.sin(a) * 15;
+    const tx = Math.cos(a) * 30, ty = -196 + Math.sin(a) * 30;
+    ctx.beginPath(); ctx.moveTo(bx - 3, by); ctx.lineTo(tx, ty); ctx.lineTo(bx + 3, by); ctx.closePath(); ctx.fill();
+  }
+  // raised arm + torch
+  ctx.strokeStyle = '#86c9ad'; ctx.lineWidth = 12;
+  ctx.beginPath(); ctx.moveTo(12, -176); ctx.lineTo(30, -232); ctx.stroke();
+  ctx.fillStyle = '#caa24a'; ctx.fillRect(26, -244, 10, 16);
+  ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.ellipse(31, -250, 8, 12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.ellipse(31, -252, 4, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawWinLevel4() {
+  const gy = groundY();
+  if (winTimer < 3.6) {
+    // HIGH FIVE on the beach, the jet waiting
+    drawSky(); drawClouds(); drawBeachBack();
+    ctx.fillStyle = '#f3e2b3'; ctx.fillRect(0, gy, W, H - gy);
+    const jx = W * 0.74, jy = gy - 80;
+    drawJet(jx, jy, 1.1, 0);
+    ctx.fillStyle = '#cfc3e3';
+    for (let i = 0; i < 5; i++) ctx.fillRect(jx - 150 - i * 14, gy - 8 - i * 14, 18, 14);
+    const cx = W * 0.40, slap = Math.abs(Math.sin(time * 5));
+    drawHighFivePig(cx - 28, gy - 6, 0.95, '#ff7ac0', +1, slap);   // Piggies
+    drawHighFivePig(cx + 28, gy - 4, 0.62, '#9bd8ff', -1, slap);   // baby sister
+    if (slap > 0.85) {
+      ctx.font = '34px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('💥', cx, gy - 80); ctx.textAlign = 'left';
+      if (Math.random() < 0.25) playSound('sparkle');
+    }
+    drawSuitPig(cx - 140, gy - 8, 0.95, true);     // host in the red cap, cheering
+    if (Math.random() < 0.12) addEmoji(cx + rand(-90, 90), gy - 120 - rand(0, 60), ['🙌', '✨', '💕'][Math.floor(Math.random() * 3)]);
+  } else {
+    // FLY TO NEW YORK, over the Statue of Liberty
+    const t = winTimer - 3.6;
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#ffd9a8'); g.addColorStop(0.5, '#ffc1e0'); g.addColorStop(1, '#bfe3ff');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff0a3'; ctx.beginPath(); ctx.arc(W * 0.82, 100, 46, 0, Math.PI * 2); ctx.fill();
+    // skyline behind the water
+    drawSkyline(gy - 30);
+    // harbor water
+    ctx.fillStyle = '#6cc0db'; ctx.fillRect(0, gy - 30, W, H - (gy - 30));
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 3;
+    for (let i = 0; i < 6; i++) {
+      const yy = gy - 8 + (i % 3) * 16, off = (time * 28 + i * 80) % 140;
+      ctx.beginPath(); for (let xx = -off; xx < W; xx += 140) ctx.ellipse(xx + 70, yy, 20, 4, 0, Math.PI, 0); ctx.stroke();
+    }
+    // Lady Liberty on her island
+    drawStatueOfLiberty(W * 0.30, gy - 24, 1.0);
+    // the jet flies across, up over the statue
+    const px = -220 + t * ((W + 440) / 7);
+    const py = H * 0.27 + Math.sin(time * 1.5) * 10;
+    drawJet(px, py, 0.9, 0.04);
+    if (Math.random() < 0.3) addEmoji(px - 60, py + 20, ['💕', '✨', '🗽'][Math.floor(Math.random() * 3)]);
+    ctx.font = '30px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('🗽 ✈️', W / 2, 58 + Math.sin(time * 3) * 6); ctx.textAlign = 'left';
+  }
+}
+
+// ----- LEVEL 3: board the jet → take off → fly up into the clouds -----
+function drawWinLevel3() {
+  const gy = groundY();
+
+  if (winTimer < 3.5) {
+    // BOARDING
+    drawSky(); drawClouds();
+    ctx.fillStyle = '#bdb6c8'; ctx.fillRect(0, gy, W, H - gy);
+    ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 6; ctx.setLineDash([30, 24]);
+    ctx.beginPath(); ctx.moveTo(0, gy + (H - gy) / 2); ctx.lineTo(W, gy + (H - gy) / 2); ctx.stroke(); ctx.setLineDash([]);
+    const jx = W * 0.66, jy = gy - 80;
+    drawJet(jx, jy, 1.15, 0);
+    // airstairs
+    ctx.fillStyle = '#cfc3e3';
+    for (let i = 0; i < 6; i++) ctx.fillRect(jx - 170 - i * 15, gy - 8 - i * 15, 20, 15);
+    // the family climbs the stairs and boards
+    const board = Math.min(winTimer / 3.2, 1);
+    const startX = W * 0.30, endX = jx - 150, startY = gy - 8, endY = gy - 96;
+    const fam = [
+      { s: 1.1, d: null,      c: false },
+      { s: 1.0, d: '#ff9ecb', c: false },
+      { s: 0.6, d: '#9bd8ff', c: false },
+      { s: 1.0, d: '#ff7ac0', c: true  },   // Piggies the pig princess
+    ];
+    for (let i = 0; i < fam.length; i++) {
+      const pr = Math.max(0, Math.min(1, board - i * 0.13));
+      drawMiniPig(startX + (endX - startX) * pr, startY + (endY - startY) * pr, fam[i].s, fam[i].d, false, 0, fam[i].c);
+    }
+    // suited pig host in a red cap, waving at the bottom
+    drawSuitPig(startX - 70, gy - 8, 1.0, true);
+
+  } else if (winTimer < 6) {
+    // TAKE OFF — rolls forward and noses up
+    drawSky(); drawClouds();
+    ctx.fillStyle = '#bdb6c8'; ctx.fillRect(0, gy, W, H - gy);
+    ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 6; ctx.setLineDash([30, 24]);
+    ctx.beginPath(); ctx.moveTo(0, gy + (H - gy) / 2); ctx.lineTo(W, gy + (H - gy) / 2); ctx.stroke(); ctx.setLineDash([]);
+    const t = (winTimer - 3.5) / 2.5;
+    const jx = W * 0.40 + t * W * 0.4, jy = gy - 80 - t * 70;
+    drawJet(jx, jy, 1.15, -t * 0.22);
+    if (Math.random() < 0.5) addEmoji(jx - 150, gy - 30, '💨', 28);
+
+  } else {
+    // FLY INTO THE CLOUDS — pastel sunset, drifting clouds, shrinking jet
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#ffd9a8'); g.addColorStop(0.5, '#ffc1e0'); g.addColorStop(1, '#cfe9ff');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff0a3';
+    ctx.beginPath(); ctx.arc(W * 0.8, 110, 50, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 9; i++) {
+      const cx = ((i * 250 + time * 30) % (W + 420)) - 210;
+      drawCloud(cx, 120 + (i % 4) * 95, 1.0 + (i % 3) * 0.35);
+    }
+    const climb = Math.min((winTimer - 6) / 4, 1);
+    const jx = W * 0.42 + climb * W * 0.42;
+    const jy = gy - 80 - climb * (gy * 0.9);
+    const s = 1.15 - climb * 0.75;
+    drawJet(jx, jy, s, -0.25);
+    if (Math.random() < 0.4) addEmoji(jx - 70, jy + 20, ['💕', '✨', '💗'][Math.floor(Math.random() * 3)]);
+    ctx.font = '30px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('✈️💕', W / 2, 64 + Math.sin(time * 3) * 8); ctx.textAlign = 'left';
+  }
+}
+
+// ----- LEVEL 1: hug → nails → fireworks -----
+function drawWinLevel1() {
+  const gy = groundY();
+  if (winTimer < 3.5) {
+    drawSky(); drawClouds(); drawGround();
+    ctx.save(); ctx.translate(W / 2, gy);
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) {
+      ctx.fillStyle = (r + c) % 2 ? '#ffb3d9' : '#ffffff';
+      ctx.fillRect(-120 + c * 40, 6 + r * 12, 40, 12);
+    }
+    ctx.restore();
+    const cx = W / 2, squeeze = Math.min(winTimer / 1.2, 1), bob = Math.sin(time * 5) * 4, lean = 0.12 * squeeze;
+    drawMiniPig(cx - 150 + 60 * squeeze, gy - 8 + bob, 1.15, null,      false,  lean, false);
+    drawMiniPig(cx + 150 - 60 * squeeze, gy - 8 - bob, 1.05, '#ff9ecb', false, -lean, false);
+    drawMiniPig(cx - 55, gy - 4 + bob * 0.5, 0.65, '#9bd8ff', false,  lean, false);
+    drawMiniPig(cx + 8,  gy - 6 - bob * 0.5, 0.9,  '#ffd97a', false, -lean * 0.5, false);
+    const pulse = 1 + Math.sin(time * 6) * 0.15;
+    ctx.font = (64 * pulse) + 'px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('💗', cx, gy - 200); ctx.textAlign = 'left';
+  } else if (winTimer < 8) {
+    drawNailCloseup(winTimer - 3.5);
+  } else {
+    drawFireworksFinale(['🐷', '💅', '✨']);
+  }
+}
+
+function drawNailCloseup(t2) {
+  const g = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) * 0.7);
+  g.addColorStop(0, '#ffe6f4'); g.addColorStop(1, '#e9d4ff');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.font = '54px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('💅', W / 2, 90); ctx.textAlign = 'left';
+  const hx = W / 2, hy = H * 0.72;
+  ctx.fillStyle = '#f2d8ff'; ctx.beginPath(); ctx.ellipse(hx, hy + 60, 230, 60, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fbbcd0'; ctx.beginPath(); ctx.ellipse(hx, hy + 30, 170, 95, 0, 0, Math.PI * 2); ctx.fill();
+  for (let i = 0; i < 4; i++) {
+    const fx = hx - 105 + i * 70;
+    const fy = hy - 30 - Math.sin((i / 3) * Math.PI) * 22;
+    ctx.fillStyle = '#fbbcd0'; ctx.beginPath(); ctx.ellipse(fx, fy + 28, 26, 42, 0, 0, Math.PI * 2); ctx.fill();
+    const paintAt = 0.6 + i * 0.9, painted = t2 > paintAt;
+    ctx.fillStyle = painted ? NAIL_COLORS[i] : '#fde9f1';
+    ctx.beginPath(); ctx.ellipse(fx, fy, 17, 21, 0, 0, Math.PI * 2); ctx.fill();
+    if (painted) {
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.beginPath(); ctx.ellipse(fx - 6, fy - 8, 4, 7, -0.4, 0, Math.PI * 2); ctx.fill();
+      if (t2 - paintAt < 0.5) { addEmoji(fx + rand(-12, 12), fy - 20, '✨', 18); if (Math.random() < 0.2) playSound('polish'); }
+    }
+  }
+  const target = Math.max(Math.min(Math.floor((t2 - 0.6) / 0.9) + 1, 3), 0);
+  const bx = hx - 105 + target * 70 + Math.sin(time * 16) * 6;
+  const by = hy - 30 - Math.sin((target / 3) * Math.PI) * 22 - 8;
+  ctx.save(); ctx.translate(bx, by); ctx.rotate(-0.5 + Math.sin(time * 16) * 0.08);
+  ctx.fillStyle = '#ff5fa8'; ctx.beginPath(); ctx.ellipse(0, 0, 6, 14, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#b03a78'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(0, -64); ctx.stroke(); ctx.restore();
+}
+
+function drawFireworksFinale(emojiTop) {
+  const gy = groundY();
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#8a7bb8'); g.addColorStop(0.6, '#caa8d8'); g.addColorStop(1, '#ffd9ec');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 24; i++) {
+    const sxr = (i * 137) % W, syr = (i * 73) % (H * 0.5);
+    ctx.globalAlpha = 0.4 + Math.sin(time * 3 + i) * 0.35;
+    ctx.fillStyle = '#fff8d6'; ctx.beginPath(); ctx.arc(sxr, syr, 2, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#b89ccf'; ctx.fillRect(0, gy, W, H - gy);
+  const cx = W / 2, bob = Math.sin(time * 5) * 3;
+  drawMiniPig(cx - 110, gy - 6 + bob, 1.15, null,      true, 0, false);
+  drawMiniPig(cx - 40,  gy - 6 - bob, 1.05, '#ff9ecb', true, 0, false);
+  drawMiniPig(cx + 25,  gy - 4 + bob, 0.9,  '#ffd97a', true, 0, level === 2);
+  drawMiniPig(cx + 85,  gy - 2 - bob, 0.65, '#9bd8ff', true, 0, false);
+  ctx.font = '30px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('🎉', cx, gy - 170 + Math.sin(time * 4) * 8); ctx.textAlign = 'left';
+}
+
+// ----- LEVEL 2: makeover → tea party → enter the castle -----
+function drawWinLevel2() {
+  const gy = groundY();
+
+  if (winTimer < 3) {
+    // ----- MAKEOVER: Piggies gets dolled up into a pig princess -----
+    const g = ctx.createRadialGradient(W / 2, H * 0.55, 40, W / 2, H * 0.55, Math.max(W, H) * 0.7);
+    g.addColorStop(0, '#fff0f8'); g.addColorStop(1, '#e9d4ff');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    const cx = W / 2, by = gy + 40;
+    const transform = Math.min(winTimer / 2.2, 1);   // 0 = plain, 1 = full princess
+
+    // swirling magic ring while transforming
+    if (winTimer < 2.4) {
+      for (let i = 0; i < 10; i++) {
+        const a = time * 4 + i * (Math.PI * 2 / 10);
+        const rr = 120 - transform * 40;
+        ctx.fillStyle = ['#ffd166', '#ff8fc8', '#c5a3ff', '#9bd8ff'][i % 4];
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath(); ctx.arc(cx + Math.cos(a) * rr, by - 90 + Math.sin(a) * rr * 0.5, 5, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Piggies, growing a fancier gown + crown as she transforms
+    ctx.save(); ctx.translate(cx, by); ctx.scale(2.4, 2.4);
+    // gown: starts yellow, blends toward royal pink/purple
+    const gownColor = transform > 0.5 ? '#ff7ac0' : '#ffd97a';
+    // legs
+    ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-9, -26); ctx.lineTo(-9, -2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(9, -26);  ctx.lineTo(9, -2);  ctx.stroke();
+    // flowing gown (wider as it becomes royal)
+    const hem = 26 + transform * 12;
+    ctx.fillStyle = gownColor;
+    ctx.beginPath(); ctx.moveTo(-7, -60); ctx.lineTo(7, -60); ctx.lineTo(hem, -22); ctx.lineTo(-hem, -22); ctx.closePath(); ctx.fill();
+    if (transform > 0.5) {                            // sparkle sash
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(-14, -40, 28, 4);
+    }
+    // arms
+    ctx.strokeStyle = '#f7a8bf'; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(-12, -50); ctx.lineTo(-24, -42); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(12, -50);  ctx.lineTo(24, -42);  ctx.stroke();
+    // head
+    ctx.fillStyle = '#fbbcd0';
+    ctx.beginPath(); ctx.arc(0, -80, 22, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-12, -100, 6, 10, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(7, -101, 6, 10, 0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f7a8bf'; ctx.beginPath(); ctx.ellipse(12, -77, 11, 8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#d97a9c';
+    ctx.beginPath(); ctx.arc(9, -77, 2.2, 0, Math.PI * 2); ctx.arc(16, -77, 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3a2e3f';
+    ctx.beginPath(); ctx.arc(-2, -84, 3, 0, Math.PI * 2); ctx.arc(7, -84, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#d97a9c'; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.arc(3, -72, 6, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+    // crown pops in near the end
+    if (transform > 0.6) {
+      const cs = Math.min((transform - 0.6) / 0.4, 1);
+      ctx.save(); ctx.translate(0, -98); ctx.scale(cs, cs);
+      ctx.fillStyle = '#ffd166';
+      ctx.beginPath();
+      ctx.moveTo(-14, 2); ctx.lineTo(-14, -12); ctx.lineTo(-6, -3); ctx.lineTo(0, -16);
+      ctx.lineTo(6, -3); ctx.lineTo(14, -12); ctx.lineTo(14, 2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ff5fa8'; ctx.beginPath(); ctx.arc(0, -8, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    ctx.font = '40px sans-serif'; ctx.textAlign = 'center';
+    ctx.globalAlpha = 0.7 + Math.sin(time * 6) * 0.3;
+    ctx.fillText('✨', cx - 120, by - 150); ctx.fillText('✨', cx + 120, by - 120);
+    ctx.globalAlpha = 1; ctx.textAlign = 'left';
+
+  } else if (winTimer < 7.5) {
+    // ----- TEA PARTY -----
+    drawSky(); drawClouds(); drawGround();
+    const cx = W / 2, tableY = gy - 30;
+
+    // Princess-Piggies + family + surviving princesses around a tea table
+    drawMiniPig(cx - 150, gy - 8, 1.0, '#ff9ecb', false, 0, false);   // Mama
+    drawMiniPig(cx - 205, gy - 8, 1.1, null,      false, 0, false);   // Papa
+    drawMiniPig(cx + 150, gy - 4, 0.6, '#9bd8ff', false, 0, false);   // Baby
+    const surv = survivors();
+    for (let i = 0; i < surv.length; i++) {
+      drawPrincessAt(cx + 200 + i * 64, gy - 10, surv[i], false);
+    }
+
+    // The tea table
+    ctx.fillStyle = '#d9a7e8'; ctx.fillRect(cx - 90, tableY, 180, 14);
+    ctx.fillStyle = '#b685c9'; ctx.fillRect(cx - 80, tableY + 14, 10, 30); ctx.fillRect(cx + 70, tableY + 14, 10, 30);
+    // lace tablecloth
+    ctx.fillStyle = '#fff0f8'; ctx.fillRect(cx - 90, tableY, 180, 8);
+    // teapot + cups + cupcake (emoji)
+    ctx.font = '30px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('🫖', cx, tableY - 6);
+    ctx.font = '22px sans-serif';
+    ctx.fillText('☕', cx - 55, tableY - 2);
+    ctx.fillText('☕', cx + 55, tableY - 2);
+    ctx.fillText('🧁', cx - 22, tableY - 2);
+    ctx.fillText('🍰', cx + 22, tableY - 2);
+    ctx.textAlign = 'left';
+
+    // Princess-Piggies (the star) sits at the head, crowned
+    drawMiniPig(cx, gy - 6, 1.05, '#ff7ac0', false, 0, true);
+
+    // steam wisps rising from the teapot
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const baseX = cx - 6 + i * 6;
+      ctx.beginPath();
+      for (let k = 0; k < 5; k++) {
+        const yy = tableY - 30 - k * 12;
+        const xx = baseX + Math.sin(time * 3 + k * 0.8 + i) * 6;
+        if (k === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+      }
+      ctx.stroke();
+    }
+
+  } else {
+    // ----- ENTER THE CASTLE (with fireworks) -----
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#8a7bb8'); g.addColorStop(0.6, '#caa8d8'); g.addColorStop(1, '#ffd9ec');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 24; i++) {
+      const sxr = (i * 137) % W, syr = (i * 73) % (H * 0.5);
+      ctx.globalAlpha = 0.4 + Math.sin(time * 3 + i) * 0.35;
+      ctx.fillStyle = '#fff8d6'; ctx.beginPath(); ctx.arc(sxr, syr, 2, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#b89ccf'; ctx.fillRect(gy * 0, gy, W, H - gy);
+
+    // A big castle, centered, with a glowing open doorway
+    drawCastle(1.25, W / 2 - 200);
+    const doorX = W / 2 - 200 + 180 * 1.25;
+    const doorBase = gy;
+    // glowing doorway
+    const glow = ctx.createRadialGradient(doorX, doorBase - 30, 5, doorX, doorBase - 30, 70);
+    glow.addColorStop(0, 'rgba(255,245,200,0.95)'); glow.addColorStop(1, 'rgba(255,245,200,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(doorX, doorBase - 30, 70, 0, Math.PI * 2); ctx.fill();
+
+    // Princess-Piggies walks INTO the castle, shrinking as she enters
+    const t3 = winTimer - 7.5;
+    const enter = Math.min(t3 / 3, 1);
+    const walkX = W / 2 - 120 + (doorX - (W / 2 - 120)) * enter;
+    const scale = 1.1 * (1 - enter * 0.5);
+    if (enter < 0.98) {
+      drawMiniPig(walkX, gy - 6, scale, '#ff7ac0', false, 0, true);
+    }
+    // family waving goodbye-for-now from the left
+    const cx = W / 2 - 260, bob = Math.sin(time * 5) * 3;
+    drawMiniPig(cx - 60, gy - 6 + bob, 0.95, null,      true, 0, false);
+    drawMiniPig(cx,      gy - 6 - bob, 0.9,  '#ff9ecb', true, 0, false);
+    drawMiniPig(cx + 50, gy - 4 + bob, 0.55, '#9bd8ff', true, 0, false);
+
+    ctx.font = '30px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('🏰', W / 2, 60 + Math.sin(time * 3) * 6);
+    ctx.fillText('👑', doorX, doorBase - 150 + Math.sin(time * 4) * 8);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ---------- Main draw ----------
+function draw() {
+  if (state === 'win') { drawWinCutscene(); return; }
+  drawSky();
+  drawClouds();
+  if (level === 3) { drawCastle(); drawHall(); }
+  else if (level === 4) {
+    drawBeachBack();
+    if (state === 'playing' && time < 3.5) { const t = time / 3.5; drawJet(W * 0.32 + t * W * 0.55, 120 - t * 60, 0.6 - t * 0.25, -0.2); }
+  } else if (level === 5) { drawCityBack(); }
+  else { drawCastle(); }
+  drawGround();
+  if (level === 5) drawStreetProps();
+  if (level !== 3 && level !== 4 && level !== 5) drawFlowers();
+  if (level !== 3 && level !== 4 && level !== 5) for (let tx = 1400; tx < worldLength; tx += 2500) drawIceCreamTruck(tx);
+  if (level === 3) drawLevel3Finish();
+  else if (level === 4) drawLevel4Finish();
+  else if (level === 5) drawLevel5Finish();
+  else drawPicnicAndSalon();
+  if (level === 4) drawCoins();
+  drawPickups();
+  drawPrincesses();
+  if (level === 5) drawNPCs();
+  for (const w of wolves) if (w.alive) drawWolf(w);
+  for (const m of motos) if (m.alive) drawMoto(m);
+  for (const k of knights) if (k.alive) drawKnight(k);
+  if (level === 4) drawBaby();
+  drawPig();
+  if (level === 5) { drawBricks(); drawHelicopter(); }
+  drawParticles();
+  drawScreenParticles();
+  drawHUD();
+}
+
+// Polyfill roundRect for older browsers
+if (!ctx.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    return this;
+  };
+}
+
+// ---------- Game loop ----------
+let last = performance.now();
+let prevState = '';
+function loop(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  update(dt);
+  draw();
+  // show/hide the touch jump button only while playing
+  if (state !== prevState) {
+    jumpBtn.style.display = (isTouch && state === 'playing') ? 'flex' : 'none';
+    prevState = state;
+  }
+  requestAnimationFrame(loop);
+}
+resetGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
